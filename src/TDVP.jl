@@ -466,11 +466,11 @@ end
 function local_time_evolution(Ĥₑ::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, T₀::ITensor, Ncut::Integer, verb_level::Integer)
 
     if verb_level > 2
-        # return krylov_expm(Ĥₑ, T₀; max_iter=Ncut, tol=1.0E-6, verbose=true)
-        return exp_taylor_sum(Ĥₑ, T₀, 10)
+        return krylov_expm(Ĥₑ, T₀; max_iter=Ncut, tol=1.0E-6, verbose=true)
+        # return exp_taylor_sum(Ĥₑ, T₀, 10)
     else
-        # return krylov_expm(Ĥₑ, T₀; max_iter=Ncut, tol=1.0E-6, verbose=false)
-        return exp_taylor_sum(Ĥₑ, T₀, 10)
+        return krylov_expm(Ĥₑ, T₀; max_iter=Ncut, tol=1.0E-6, verbose=false)
+        # return exp_taylor_sum(Ĥₑ, T₀, 10)
     end
 
 end
