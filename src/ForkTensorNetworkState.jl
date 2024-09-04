@@ -239,6 +239,7 @@ function canonize_arm!(ψ::ForkTensorNetworkState, x::Integer, yi::Integer, yf::
 
         ψ.network_matrix[ψ.sites[x, y], ψ.sites[x, y+dy]] = 1
         ψ.network_matrix[ψ.sites[x, y+dy], ψ.sites[x, y]] = 0
+
     end
 
 end
@@ -275,6 +276,7 @@ function canonize_backbone!(ψ::ForkTensorNetworkState, xi::Integer, xf::Integer
 
         ψ.network_matrix[ψ.sites[x, 1], ψ.sites[x+dx, 1]] = 1
         ψ.network_matrix[ψ.sites[x+dx, 1], ψ.sites[x, 1]] = 0
+
     end
 
 end
@@ -335,6 +337,32 @@ function canonical_center_move!(ψ::ForkTensorNetworkState, dir::String)
     else
         throw(ArgumentError("Invalid direction"))
     end
+
+end
+
+
+"""
+    network_update!(ψ::ForkTensorNetworkState, direction::String)
+    Update the network matrix of the Fork Tensor Network State
+"""
+function network_update!(ψ::ForkTensorNetworkState, direction::String)
+
+    if direction == "right"
+        (dx, dy) = (0, 1)
+    elseif direction == "left"
+        (dx, dy) = (0, -1)
+    elseif direction == "up"
+        (dx, dy) = (-1, 0)
+    elseif direction == "down"
+        (dx, dy) = (1, 0)
+    else
+        throw(ArgumentError("Invalid direction"))
+    end
+
+    (x, y) = ψ.canonical_center
+    ψ.network_matrix[ψ.sites[x, y], ψ.sites[x+dx, y+dy]] = 1
+    ψ.network_matrix[ψ.sites[x+dx, y+dy], ψ.sites[x, y]] = 0
+    ψ.canonical_center = (x + dx, y + dy)
 
 end
 

@@ -164,13 +164,15 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, Ĥ::ForkTensorNetworkOp
         else
             Ĥₑ = (-1im * δt, tdvp.εl[x, y], Ĥ.Ws[x, y], tdvp.εr[x, y])
         end
-        
+
         ψ.Ts[x, y] .= local_time_evolution(Ĥₑ, ψ.Ts[x, y], tdvp.params["Ncut"], tdvp.params["verb_level"])
-        if y==ψ.Ly && direction=="right"
+
+        # Time-evolution stops at the rightmost site of the system w/o the backward time-evolution
+        if y == ψ.Ly && direction == "right"
             break
         end
+
         U, S, ψ.Ts[x, y] = svd(ψ.Ts[x, y], ψ.aux_y_idx[x, y+a]; cutoff=1e-10, righttags=tags(ψ.aux_y_idx[x, y+a]))
-        
         update_environment!(tdvp, Ĥ, ψ, x, y, direction)
 
         Kₑ = (+1im * δt, tdvp.εl[x, y+dyₗ], tdvp.εr[x, y+dyᵣ])
@@ -183,9 +185,7 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, Ĥ::ForkTensorNetworkOp
             ψ.aux_y_idx[x, y+a] = dag(ψ.aux_y_idx[x, y+a])
         end # to make the direction of bond consistent
 
-        ψ.network_matrix[ψ.sites[x, y], ψ.sites[x, y+dy]] = 1
-        ψ.network_matrix[ψ.sites[x, y+dy], ψ.sites[x, y]] = 0
-        ψ.canonical_center = (x, y + dy)
+        network_update!(ψ, direction)
 
     end
 
@@ -212,7 +212,7 @@ function single_site_time_evolution_on_backbone!(tdvp::TDVP, Ĥ::ForkTensorNetw
     Ĥₑ = (-1im * δt, tdvp.εu[x], Ĥ.Ws[x, 1], tdvp.εr[x, 1], tdvp.εd[x])
     ψ.Ts[x, 1] .= local_time_evolution(Ĥₑ, ψ.Ts[x, 1], tdvp.params["Ncut"], tdvp.params["verb_level"])
     U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=1e-10, righttags=tags(ψ.aux_x_idx[x+a]))
-    
+
     update_environment!(tdvp, Ĥ, ψ, x, 1, direction)
 
     Kₑ = (+1im * δt, tdvp.εu[x+dxᵤ], tdvp.εd[x+dxₑ])
@@ -225,9 +225,7 @@ function single_site_time_evolution_on_backbone!(tdvp::TDVP, Ĥ::ForkTensorNetw
         ψ.aux_x_idx[x+a] = dag(ψ.aux_x_idx[x+a])
     end # to make the direction of bond consistent
 
-    ψ.network_matrix[ψ.sites[x, 1], ψ.sites[x+dx, 1]] = 1
-    ψ.network_matrix[ψ.sites[x+dx, 1], ψ.sites[x, 1]] = 0
-    ψ.canonical_center = (x + dx, 1)
+    network_update!(ψ, direction)
 
 end
 
@@ -296,15 +294,18 @@ function two_site_time_evolution_arm_right!(tdvp::TDVP, Ĥ::ForkTensorNetworkOp
         end
         update_environment!(tdvp, Ĥ, ψ, x, y, "right")
 
-        # Backward time-evolution
-        Kₑ = (+1im * δt, tdvp.εl[x, y+1], Ĥ.Ws[x, y+1], tdvp.εr[x, y+1])
-        ψ.Ts[x, y+1] = local_time_evolution(Kₑ, S * V, tdvp.params["Ncut"], tdvp.params["verb_level"])
+        if y == ψ.Ly - 1
+            # No backward time-evolution at the rightmost site of the system
+            ψ.Ts[x, y+1] = S * V
+        else
+            # Backward time-evolution
+            Kₑ = (+1im * δt, tdvp.εl[x, y+1], Ĥ.Ws[x, y+1], tdvp.εr[x, y+1])
+            ψ.Ts[x, y+1] = local_time_evolution(Kₑ, S * V, tdvp.params["Ncut"], tdvp.params["verb_level"])
+        end
 
         # Update index & network matrix
         ψ.aux_y_idx[x, y] = commonind(ψ.Ts[x, y], S)
-        ψ.network_matrix[ψ.sites[x, y], ψ.sites[x, y+1]] = 1
-        ψ.network_matrix[ψ.sites[x, y+1], ψ.sites[x, y]] = 0
-        ψ.canonical_center = (x, y + 1)
+        network_update!(ψ, "right")
 
     end
 
@@ -348,12 +349,9 @@ function two_site_time_evolution_arm_left!(tdvp::TDVP, Ĥ::ForkTensorNetworkOpe
         end
         ψ.Ts[x, y-1] = local_time_evolution(Kₑ, U * S, tdvp.params["Ncut"], tdvp.params["verb_level"])
 
-
         # Update index & network matrix
         ψ.aux_y_idx[x, y-1] = commonind(S, ψ.Ts[x, y]) # 순서 주의
-        ψ.network_matrix[ψ.sites[x, y], ψ.sites[x, y-1]] = 1
-        ψ.network_matrix[ψ.sites[x, y-1], ψ.sites[x, y]] = 0
-        ψ.canonical_center = (x, y - 1)
+        network_update!(ψ, "left")
 
     end
 
@@ -388,9 +386,7 @@ function two_site_time_evolution_backbone_down!(tdvp::TDVP, Ĥ::ForkTensorNetwo
 
     # Update index & network matrix
     ψ.aux_x_idx[x] = commonind(ψ.Ts[x, 1], S)
-    ψ.network_matrix[ψ.sites[x, 1], ψ.sites[x+1, 1]] = 1
-    ψ.network_matrix[ψ.sites[x+1, 1], ψ.sites[x, 1]] = 0
-    ψ.canonical_center = (x + 1, 1)
+    network_update!(ψ, "down")
 
 end
 
@@ -424,9 +420,7 @@ function two_site_time_evolution_backbone_up!(tdvp::TDVP, Ĥ::ForkTensorNetwork
 
     # Update index & network matrix
     ψ.aux_x_idx[x-1] = commonind(S, ψ.Ts[x, 1]) # 순서 주의
-    ψ.network_matrix[ψ.sites[x, 1], ψ.sites[x-1, 1]] = 1
-    ψ.network_matrix[ψ.sites[x-1, 1], ψ.sites[x, 1]] = 0
-    ψ.canonical_center = (x - 1, 1)
+    network_update!(ψ, "up")
 
 end
 

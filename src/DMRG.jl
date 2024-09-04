@@ -354,9 +354,7 @@ function two_site_sweep_arm_right!(dmrg::DMRG, Ĥ::ForkTensorNetworkOperator, �
         ψ.Ts[x, y+1] = S * V
         ψ.aux_y_idx[x, y] = commonind(U, S)
 
-        ψ.network_matrix[ψ.sites[x, y], ψ.sites[x, y+1]] = 1
-        ψ.network_matrix[ψ.sites[x, y+1], ψ.sites[x, y]] = 0
-        ψ.canonical_center = (x, y + 1)
+        network_update!(ψ, "right")
 
     end
 
@@ -391,9 +389,7 @@ function two_site_sweep_arm_left!(dmrg::DMRG, Ĥ::ForkTensorNetworkOperator, ψ
         ψ.Ts[x, y-1] = U * S
         ψ.aux_y_idx[x, y-1] = commonind(S, V) # 순서 주의
 
-        ψ.network_matrix[ψ.sites[x, y], ψ.sites[x, y-1]] = 1
-        ψ.network_matrix[ψ.sites[x, y-1], ψ.sites[x, y]] = 0
-        ψ.canonical_center = (x, y - 1)
+        network_update!(ψ, "left")
 
     end
 
@@ -426,9 +422,7 @@ function two_site_update_backbone_down!(dmrg::DMRG, Ĥ::ForkTensorNetworkOperat
     ψ.Ts[x+1, 1] = S * V
     ψ.aux_x_idx[x] = commonind(U, S)
 
-    ψ.network_matrix[ψ.sites[x, 1], ψ.sites[x+1, 1]] = 1
-    ψ.network_matrix[ψ.sites[x+1, 1], ψ.sites[x, 1]] = 0
-    ψ.canonical_center = (x + 1, 1)
+    network_update!(ψ, "down")
 
 end # function update_backbone_down!
 
@@ -459,8 +453,6 @@ function two_site_update_backbone_up!(dmrg::DMRG, Ĥ::ForkTensorNetworkOperator
     ψ.Ts[x-1, 1] = S * U
     ψ.aux_x_idx[x-1] = commonind(S, V) # 순서 주의
 
-    ψ.network_matrix[ψ.sites[x, 1], ψ.sites[x-1, 1]] = 1
-    ψ.network_matrix[ψ.sites[x-1, 1], ψ.sites[x, 1]] = 0
-    ψ.canonical_center = (x - 1, 1)
+    network_update!(ψ, "up")
 
 end # function update_backbone_up!
