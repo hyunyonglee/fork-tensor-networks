@@ -396,7 +396,7 @@ function norm_ftn(ψ::ForkTensorNetworkState)
         for x = 1:ψ.Lx
             Ty = 1
             for y = ψ.Ly:-1:1
-                Ty *= noprime(prime(ψ.Ts[x, y]); tags="Site") * dag(ψ.Ts[x, y])
+                Ty = (Ty * noprime(prime(ψ.Ts[x, y]); tags="Site")) * dag(ψ.Ts[x, y])
             end
             Tx *= Ty
         end
@@ -423,7 +423,7 @@ function overlap_ftn(ψ1::ForkTensorNetworkState, ψ2::ForkTensorNetworkState)
     for x = 1:ψ1.Lx
         Ty = 1
         for y = ψ1.Ly:-1:1
-            Ty *= dag(replaceind(ψ1.Ts[x, y], ψ1.phys_idx[x, y], ψ2.phys_idx[x, y])) * noprime(prime(ψ2.Ts[x, y]); tags="Site")
+            Ty = (Ty * dag(replaceind(ψ1.Ts[x, y], ψ1.phys_idx[x, y], ψ2.phys_idx[x, y]))) * noprime(prime(ψ2.Ts[x, y]); tags="Site")
         end
         Tx *= Ty
     end
@@ -443,7 +443,7 @@ function expectation_value_ftn(ψ::ForkTensorNetworkState, Ĥ::ForkTensorNetwor
     for x = 1:ψ.Lx
         Ty = 1
         for y = ψ.Ly:-1:1
-            Ty *= ψ.Ts[x, y] * Ĥ.Ws[x, y] * prime(dag(ψ.Ts[x, y]))
+            Ty = ((Ty * ψ.Ts[x, y]) * Ĥ.Ws[x, y]) * prime(dag(ψ.Ts[x, y]))
         end
         Tx *= Ty
     end
