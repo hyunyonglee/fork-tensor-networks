@@ -1,5 +1,5 @@
 module AndersonImpurityModel
-using ITensors, Random
+using ITensors, ITensorMPS, Random
 
 export ftns_initial_state, ftno_aim_model
 
