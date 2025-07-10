@@ -5,7 +5,7 @@
 """
 module ForkTensorNetworks
 
-using ITensors, GraphRecipes, Plots, Printf
+using ITensors, ITensorMPS, GraphRecipes, Plots, Printf
 using LinearAlgebra: diagm, SymTridiagonal
 
 include("Functions.jl")
