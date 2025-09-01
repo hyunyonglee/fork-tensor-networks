@@ -28,7 +28,9 @@ function ftns_initial_state(phys_idx::Matrix{Index}, ρ::Float64; conserve_qns=t
 
     for x = 1:(Lx-1)
         aux_x_idx[x] = Index([QN("Nf", 0, -1) => 1], "FTNS,Backbone,x=($(x)-$(x+1)),y=1"; dir=ITensors.Out)
-        if !conserve_qns; aux_x_idx[x] = removeqns(aux_x_idx[x]); end
+        if !conserve_qns
+            aux_x_idx[x] = removeqns(aux_x_idx[x])
+        end
     end
 
 
@@ -52,10 +54,11 @@ function ftno_aim_model(model_params::Dict{String,Any})
     Lx = 2 * model_params["N_orb"]
     Ly = model_params["N_bath"] + 1
     conserve_qns = model_params["conserve_qns"]
+    Geometry = model_params["Geometry"]
 
     Ws = Matrix{ITensor}(undef, Lx, Ly)
 
-    phys_idx, aux_x_idx, aux_y_idx = ftno_indices(Lx, Ly; conserve_qns=conserve_qns)
+    phys_idx, aux_x_idx, aux_y_idx = ftno_indices(Lx, Ly, Geometry; conserve_qns=conserve_qns)
 
     ftno_Ws_bath!(Ws, phys_idx, aux_y_idx, model_params)
     ftno_Ws_impurity!(Ws, phys_idx, aux_x_idx, aux_y_idx, model_params)
@@ -71,16 +74,17 @@ function ftno_Ws_bath!(Ws::Matrix{ITensor}, phys_idx::Matrix{Index}, aux_y_idx::
     Ly = model_params["N_bath"] + 1
     εₖ = model_params["εₖ"]
     Vₖ = model_params["Vₖ"]
+    Geometry = model_params["Geometry"]
 
     for x = 1:2:Lx
 
         for y = 2:Ly
             if y < Ly
-                Ws[x, y] = W_bath_spin_up(phys_idx[x, y], dag(aux_y_idx[x, y-1]), aux_y_idx[x, y], εₖ[x, y], Vₖ[x, y]; edge=false)
-                Ws[x+1, y] = W_bath_spin_down(phys_idx[x+1, y], dag(aux_y_idx[x+1, y-1]), aux_y_idx[x+1, y], εₖ[x+1, y], Vₖ[x+1, y]; edge=false)
+                Ws[x, y] = W_bath_spin_up(phys_idx[x, y], dag(aux_y_idx[x, y-1]), aux_y_idx[x, y], εₖ[x, y], Vₖ[x, y], Geometry; edge=false)
+                Ws[x+1, y] = W_bath_spin_down(phys_idx[x+1, y], dag(aux_y_idx[x+1, y-1]), aux_y_idx[x+1, y], εₖ[x+1, y], Vₖ[x+1, y], Geometry; edge=false)
             else
-                Ws[x, y] = W_bath_spin_up(phys_idx[x, y], dag(aux_y_idx[x, y-1]), nothing, εₖ[x, y], Vₖ[x, y]; edge=true)
-                Ws[x+1, y] = W_bath_spin_down(phys_idx[x+1, y], dag(aux_y_idx[x+1, y-1]), nothing, εₖ[x+1, y], Vₖ[x+1, y]; edge=true)
+                Ws[x, y] = W_bath_spin_up(phys_idx[x, y], dag(aux_y_idx[x, y-1]), nothing, εₖ[x, y], Vₖ[x, y], Geometry; edge=true)
+                Ws[x+1, y] = W_bath_spin_down(phys_idx[x+1, y], dag(aux_y_idx[x+1, y-1]), nothing, εₖ[x+1, y], Vₖ[x+1, y], Geometry; edge=true)
             end
         end
     end
@@ -95,18 +99,19 @@ function ftno_Ws_impurity!(Ws::Matrix{ITensor}, phys_idx::Matrix{Index}, aux_x_i
     U = model_params["U"]
     U′ = model_params["U′"]
     J = model_params["J"]
+    Geometry = model_params["Geometry"]
 
     for x = 1:2:Lx
 
         if x == 1
-            Ws[x, 1] = W_imp1_spin_up(phys_idx[x, 1], aux_x_idx[x], aux_y_idx[x, 1], εₖ[x, 1])
-            Ws[x+1, 1] = W_imp1_spin_down(phys_idx[x+1, 1], aux_x_idx[x+1], dag(aux_x_idx[x]), aux_y_idx[x+1, 1], εₖ[x+1, 1], U)
+            Ws[x, 1] = W_imp1_spin_up(phys_idx[x, 1], aux_x_idx[x], aux_y_idx[x, 1], εₖ[x, 1], Geometry)
+            Ws[x+1, 1] = W_imp1_spin_down(phys_idx[x+1, 1], aux_x_idx[x+1], dag(aux_x_idx[x]), aux_y_idx[x+1, 1], εₖ[x+1, 1], U, Geometry)
         elseif x > 2 && x < Lx - 2
-            Ws[x, 1] = W_imp2_spin_up(phys_idx[x, 1], aux_x_idx[x], dag(aux_x_idx[x-1]), aux_y_idx[x, 1], εₖ[x, 1], U′, J)
-            Ws[x+1, 1] = W_imp2_spin_down(phys_idx[x+1, 1], aux_x_idx[x+1], dag(aux_x_idx[x]), aux_y_idx[x+1, 1], εₖ[x+1, 1], U, U′, J)
+            Ws[x, 1] = W_imp2_spin_up(phys_idx[x, 1], aux_x_idx[x], dag(aux_x_idx[x-1]), aux_y_idx[x, 1], εₖ[x, 1], U′, J, Geometry)
+            Ws[x+1, 1] = W_imp2_spin_down(phys_idx[x+1, 1], aux_x_idx[x+1], dag(aux_x_idx[x]), aux_y_idx[x+1, 1], εₖ[x+1, 1], U, U′, J, Geometry)
         else
-            Ws[x, 1] = W_imp3_spin_up(phys_idx[x, 1], aux_x_idx[x], dag(aux_x_idx[x-1]), aux_y_idx[x, 1], εₖ[x, 1], U′, J)
-            Ws[x+1, 1] = W_imp3_spin_down(phys_idx[x+1, 1], dag(aux_x_idx[x]), aux_y_idx[x+1, 1], εₖ[x+1, 1], U, U′, J)
+            Ws[x, 1] = W_imp3_spin_up(phys_idx[x, 1], aux_x_idx[x], dag(aux_x_idx[x-1]), aux_y_idx[x, 1], εₖ[x, 1], U′, J, Geometry)
+            Ws[x+1, 1] = W_imp3_spin_down(phys_idx[x+1, 1], dag(aux_x_idx[x]), aux_y_idx[x+1, 1], εₖ[x+1, 1], U, U′, J, Geometry)
         end
 
     end
@@ -115,7 +120,7 @@ end
 
 
 
-function ftno_indices(Lx::Int, Ly::Int; conserve_qns=true)
+function ftno_indices(Lx::Int, Ly::Int, Geometry::String; conserve_qns=true)
 
     phys_idx = Matrix{Index}(undef, Lx, Ly)
     aux_x_idx = Vector{Index}(undef, Lx - 1)
@@ -135,11 +140,26 @@ function ftno_indices(Lx::Int, Ly::Int; conserve_qns=true)
 
         for y = 1:(Ly-1)
 
-            if x % 2 == 1
-                aux_y_idx[x, y] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 3, QN(("Nf", -1, -1), ("Sz", -1)) => 1, QN(("Nf", +1, -1), ("Sz", +1)) => 1], "FTNO,Arm,x=$(x),y=($(y)-$(y+1))"; dir=ITensors.Out)
+            if Geometry == "star"
+
+                if x % 2 == 1
+                    aux_y_idx[x, y] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 3, QN(("Nf", -1, -1), ("Sz", -1)) => 1, QN(("Nf", +1, -1), ("Sz", +1)) => 1], "FTNO,Arm,x=$(x),y=($(y)-$(y+1))"; dir=ITensors.Out)
+                else
+                    aux_y_idx[x, y] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 2, QN(("Nf", -1, -1), ("Sz", +1)) => 1, QN(("Nf", +1, -1), ("Sz", -1)) => 1], "FTNO,Arm,x=$(x),y=($(y)-$(y+1))"; dir=ITensors.Out)
+                end
+
+            elseif Geometry == "double chain"
+
+                if x % 2 == 1
+                    aux_y_idx[x, y] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 3, QN(("Nf", -1, -1), ("Sz", -1)) => 1, QN(("Nf", +1, -1), ("Sz", +1)) => 1, QN(("Nf", -1, -1), ("Sz", -1)) => 1, QN(("Nf", +1, -1), ("Sz", +1)) => 1], "FTNO,Arm,x=$(x),y=($(y)-$(y+1))"; dir=ITensors.Out)
+                else
+                    aux_y_idx[x, y] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 2, QN(("Nf", -1, -1), ("Sz", +1)) => 1, QN(("Nf", +1, -1), ("Sz", -1)) => 1, QN(("Nf", -1, -1), ("Sz", +1)) => 1, QN(("Nf", +1, -1), ("Sz", -1)) => 1], "FTNO,Arm,x=$(x),y=($(y)-$(y+1))"; dir=ITensors.Out)
+                end
+
             else
-                aux_y_idx[x, y] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 2, QN(("Nf", -1, -1), ("Sz", +1)) => 1, QN(("Nf", +1, -1), ("Sz", -1)) => 1], "FTNO,Arm,x=$(x),y=($(y)-$(y+1))"; dir=ITensors.Out)
+                error("AIM FTNO not implemented for this geometry.")
             end
+
         end
     end
 
@@ -151,18 +171,18 @@ function ftno_indices(Lx::Int, Ly::Int; conserve_qns=true)
     end
     aux_x_idx[Lx-1] = Index([QN(("Nf", 0, -1), ("Sz", 0)) => 5, QN(("Nf", 1, -1), ("Sz", -1)) => 1, QN(("Nf", -1, -1), ("Sz", 1)) => 2, QN(("Nf", 1, -1), ("Sz", -1)) => 1], "FTNO,Backbone,x=($(Lx-1)-$(Lx)),y=1"; dir=ITensors.Out)
 
-    
-    if !conserve_qns 
+
+    if !conserve_qns
         for x = 1:Lx
             for y = 1:(Ly-1)
-                aux_y_idx[x, y] = removeqns(aux_y_idx[x, y]); 
+                aux_y_idx[x, y] = removeqns(aux_y_idx[x, y])
             end
         end
 
-        for x=1:(Lx-1)
-            aux_x_idx[x] = removeqns(aux_x_idx[x]); 
+        for x = 1:(Lx-1)
+            aux_x_idx[x] = removeqns(aux_x_idx[x])
         end
-    
+
     end
 
     return phys_idx, aux_x_idx, aux_y_idx
@@ -170,13 +190,28 @@ function ftno_indices(Lx::Int, Ly::Int; conserve_qns=true)
 end
 
 
-function W_imp1_spin_up(s::Index, d::Index, r::Index, ε::Float64)
+function W_imp1_spin_up(s::Index, d::Index, r::Index, ε::Float64, Geometry::String)
 
     # HB
-    W = onehot(d => 1, r => 1) * op("I", s)
-    W += onehot(d => 1, r => 2) * op("N", s) * ε
-    W += onehot(d => 1, r => 4) * op("c†", s)
-    W += onehot(d => 1, r => 5) * op("c", s)
+    if Geometry == "star"
+
+        W = onehot(d => 1, r => 1) * op("I", s)
+        W += onehot(d => 1, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, r => 4) * op("c†", s)
+        W += onehot(d => 1, r => 5) * op("c", s)
+
+    elseif Geometry == "double chain"
+
+        W = onehot(d => 1, r => 1) * op("I", s)
+        W += onehot(d => 1, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, r => 4) * op("c†", s)
+        W += onehot(d => 1, r => 5) * op("c", s)
+        W += onehot(d => 1, r => 6) * op("c†", s)
+        W += onehot(d => 1, r => 7) * op("c", s)
+
+    else
+        error("AIM FTNO not implemented for this geometry.")
+    end
 
     W += onehot(d => 2, r => 2) * op("I", s)
     W += onehot(d => 3, r => 2) * op("N", s)
@@ -188,20 +223,35 @@ function W_imp1_spin_up(s::Index, d::Index, r::Index, ε::Float64)
 end
 
 
-function W_imp1_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U::Float64)
+function W_imp1_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U::Float64, Geometry::String)
+
+    # HB
+    if Geometry == "star"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 3) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 4) * op("c", s)
+
+    elseif Geometry == "double chain"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 3) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 4) * op("c", s)
+        W += onehot(d => 1, u => 2, r => 5) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 6) * op("c", s)
+
+    else
+        error("AIM FTNO not implemented for this geometry.")
+    end
 
     # Block 1
-    W = onehot(d => 1, u => 1, r => 2) * op("I", s)
+    W += onehot(d => 1, u => 1, r => 2) * op("I", s)
     W += onehot(d => 2, u => 2, r => 2) * op("I", s)
     W += onehot(d => 3, u => 3, r => 2) * op("I", s)
     W += onehot(d => 1, u => 3, r => 2) * op("N", s) * U
     W += onehot(d => 4, u => 2, r => 2) * op("N", s)
-
-    # HB
-    W += onehot(d => 1, u => 2, r => 1) * op("I", s)
-    W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
-    W += onehot(d => 1, u => 2, r => 3) * op("c†", s)
-    W += onehot(d => 1, u => 2, r => 4) * op("c", s)
 
     # Block 2
     W += onehot(d => 5, u => 4, r => 2) * op("c", s)
@@ -216,10 +266,31 @@ function W_imp1_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U
 end
 
 
-function W_imp2_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U′::Float64, J::Float64)
+function W_imp2_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U′::Float64, J::Float64, Geometry::String)
+
+    # HB
+    if Geometry == "star"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 4) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 5) * op("c", s)
+
+    elseif Geometry == "double chain"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 4) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 5) * op("c", s)
+        W += onehot(d => 1, u => 2, r => 6) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 7) * op("c", s)
+
+    else
+        error("AIM FTNO not implemented for this geometry.")
+    end
 
     # Block 1
-    W = onehot(d => 1, u => 1, r => 2) * op("I", s)
+    W += onehot(d => 1, u => 1, r => 2) * op("I", s)
     W += onehot(d => 2, u => 2, r => 2) * op("I", s)
     W += onehot(d => 3, u => 3, r => 2) * op("I", s)
     W += onehot(d => 4, u => 4, r => 2) * op("I", s)
@@ -228,12 +299,6 @@ function W_imp2_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U�
     W += onehot(d => 1, u => 3, r => 2) * op("N", s) * (U′ - J)
     W += onehot(d => 1, u => 4, r => 2) * op("N", s) * U′
     W += onehot(d => 5, u => 2, r => 2) * op("N", s)
-
-    # HB
-    W += onehot(d => 1, u => 2, r => 1) * op("I", s)
-    W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
-    W += onehot(d => 1, u => 2, r => 4) * op("c†", s)
-    W += onehot(d => 1, u => 2, r => 5) * op("c", s)
 
     # Block 2
     W += onehot(d => 7, u => 6, r => 2) * op("I", s)
@@ -255,10 +320,31 @@ function W_imp2_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U�
 end
 
 
-function W_imp2_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U::Float64, U′::Float64, J::Float64)
+function W_imp2_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U::Float64, U′::Float64, J::Float64, Geometry::String)
+
+    # HB
+    if Geometry == "star"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 3) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 4) * op("c", s)
+
+    elseif Geometry == "double chain"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 3) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 4) * op("c", s)
+        W += onehot(d => 1, u => 2, r => 5) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 6) * op("c", s)
+
+    else
+        error("AIM FTNO not implemented for this geometry.")
+    end
 
     # Block 1
-    W = onehot(d => 1, u => 1, r => 2) * op("I", s)
+    W += onehot(d => 1, u => 1, r => 2) * op("I", s)
     W += onehot(d => 2, u => 2, r => 2) * op("I", s)
     W += onehot(d => 3, u => 3, r => 2) * op("I", s)
     W += onehot(d => 3, u => 5, r => 2) * op("I", s)
@@ -268,12 +354,6 @@ function W_imp2_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U
     W += onehot(d => 1, u => 4, r => 2) * op("N", s) * (U′ - J)
     W += onehot(d => 1, u => 5, r => 2) * op("N", s) * U
     W += onehot(d => 4, u => 2, r => 2) * op("N", s)
-
-    # HB
-    W += onehot(d => 1, u => 2, r => 1) * op("I", s)
-    W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
-    W += onehot(d => 1, u => 2, r => 3) * op("c†", s)
-    W += onehot(d => 1, u => 2, r => 4) * op("c", s)
 
     # Block 2
     W += onehot(d => 1, u => 12, r => 2) * op("c†", s) * J
@@ -300,10 +380,31 @@ function W_imp2_spin_down(s::Index, d::Index, u::Index, r::Index, ε::Float64, U
 end
 
 
-function W_imp3_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U′::Float64, J::Float64)
+function W_imp3_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U′::Float64, J::Float64, Geometry::String)
+
+    # HB
+    if Geometry == "star"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 4) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 5) * op("c", s)
+
+    elseif Geometry == "double chain"
+
+        W = onehot(d => 1, u => 2, r => 1) * op("I", s)
+        W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
+        W += onehot(d => 1, u => 2, r => 4) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 5) * op("c", s)
+        W += onehot(d => 1, u => 2, r => 6) * op("c†", s)
+        W += onehot(d => 1, u => 2, r => 7) * op("c", s)
+
+    else
+        error("AIM FTNO not implemented for this geometry.")
+    end
 
     # Block 1
-    W = onehot(d => 1, u => 1, r => 2) * op("I", s)
+    W += onehot(d => 1, u => 1, r => 2) * op("I", s)
     W += onehot(d => 2, u => 2, r => 2) * op("I", s)
     W += onehot(d => 3, u => 3, r => 2) * op("I", s)
     W += onehot(d => 4, u => 4, r => 2) * op("I", s)
@@ -311,12 +412,6 @@ function W_imp3_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U�
     W += onehot(d => 1, u => 3, r => 2) * op("N", s) * (U′ - J)
     W += onehot(d => 1, u => 4, r => 2) * op("N", s) * U′
     W += onehot(d => 5, u => 2, r => 2) * op("N", s)
-
-    # HB
-    W += onehot(d => 1, u => 2, r => 1) * op("I", s)
-    W += onehot(d => 1, u => 2, r => 2) * op("N", s) * ε
-    W += onehot(d => 1, u => 2, r => 4) * op("c†", s)
-    W += onehot(d => 1, u => 2, r => 5) * op("c", s)
 
     # Block 2
     W += onehot(d => 6, u => 5, r => 3) * swapprime(op("c", s)' * op("F", s), 2 => 1)
@@ -329,17 +424,31 @@ function W_imp3_spin_up(s::Index, d::Index, u::Index, r::Index, ε::Float64, U�
 end
 
 
-function W_imp3_spin_down(s::Index, u::Index, r::Index, ε::Float64, U::Float64, U′::Float64, J::Float64)
-
-    # Block 1
-    W = onehot(u => 1, r => 2) * op("I", s)
+function W_imp3_spin_down(s::Index, u::Index, r::Index, ε::Float64, U::Float64, U′::Float64, J::Float64, Geometry::String)
 
     # HB
-    W += onehot(u => 2, r => 1) * op("I", s)
-    W += onehot(u => 2, r => 2) * op("N", s) * ε
-    W += onehot(u => 2, r => 3) * op("c†", s)
-    W += onehot(u => 2, r => 4) * op("c", s)
+    if Geometry == "star"
 
+        W = onehot(u => 2, r => 1) * op("I", s)
+        W += onehot(u => 2, r => 2) * op("N", s) * ε
+        W += onehot(u => 2, r => 3) * op("c†", s)
+        W += onehot(u => 2, r => 4) * op("c", s)
+
+    elseif Geometry == "double chain"
+
+        W = onehot(u => 2, r => 1) * op("I", s)
+        W += onehot(u => 2, r => 2) * op("N", s) * ε
+        W += onehot(u => 2, r => 3) * op("c†", s)
+        W += onehot(u => 2, r => 4) * op("c", s)
+        W += onehot(u => 2, r => 5) * op("c†", s)
+        W += onehot(u => 2, r => 6) * op("c", s)
+
+    else
+        error("AIM FTNO not implemented for this geometry.")
+    end
+
+    # Block 1
+    W += onehot(u => 1, r => 2) * op("I", s)
     W += onehot(u => 3, r => 2) * op("N", s) * U′
     W += onehot(u => 4, r => 2) * op("N", s) * (U′ - J)
     W += onehot(u => 5, r => 2) * op("N", s) * U
@@ -355,57 +464,122 @@ function W_imp3_spin_down(s::Index, u::Index, r::Index, ε::Float64, U::Float64,
 end
 
 
-function W_bath_spin_up(s::Index, l::Index, r::Union{Index,Nothing}, ε::Float64, V::Float64; edge::Bool=false)
+function W_bath_spin_up(s::Index, l::Index, r::Union{Index,Nothing}, ε::Float64, V::Float64, Geometry::String; edge::Bool=false)
 
-    if edge
+    if Geometry == "star"
 
-        W = onehot(l => 1) * op("N", s) * ε
-        W += onehot(l => 2) * op("I", s)
-        W += onehot(l => 3) * op("F", s)
-        W += onehot(l => 4) * op("c", s) * V
-        W += onehot(l => 5) * op("c†", s) * V
+        if edge
+
+            W = onehot(l => 1) * op("N", s) * ε
+            W += onehot(l => 2) * op("I", s)
+            W += onehot(l => 3) * op("F", s)
+            W += onehot(l => 4) * op("c", s) * V
+            W += onehot(l => 5) * op("c†", s) * V
+
+        else
+
+            W = onehot(l => 1, r => 1) * op("I", s)
+            W += onehot(l => 2, r => 2) * op("I", s)
+            W += onehot(l => 3, r => 3) * op("F", s)
+            W += onehot(l => 4, r => 4) * op("F", s)
+            W += onehot(l => 5, r => 5) * op("F", s)
+            W += onehot(l => 1, r => 2) * op("N", s) * ε
+            W += onehot(l => 4, r => 2) * op("c", s) * V
+            W += onehot(l => 5, r => 2) * op("c†", s) * V
+
+        end
+
+    elseif Geometry == "double chain"
+
+        if edge
+
+            W = onehot(l => 1) * op("N", s) * ε
+            W += onehot(l => 2) * op("I", s)
+            W += onehot(l => 3) * op("F", s)
+            W += onehot(l => 6) * op("c", s) * V
+            W += onehot(l => 7) * op("c†", s) * V
+
+        else
+
+            W = onehot(l => 1, r => 1) * op("I", s)
+            W += onehot(l => 2, r => 2) * op("I", s)
+            W += onehot(l => 3, r => 3) * op("F", s)
+
+            W += onehot(l => 4, r => 6) * op("F", s)
+            W += onehot(l => 5, r => 7) * op("F", s)
+
+            W += onehot(l => 1, r => 2) * op("N", s) * ε
+            W += onehot(l => 1, r => 4) * op("c†", s)
+            W += onehot(l => 1, r => 5) * op("c", s)
+
+            W += onehot(l => 6, r => 2) * op("c", s) * V
+            W += onehot(l => 7, r => 2) * op("c†", s) * V
+
+        end
 
     else
-
-        W = onehot(l => 1, r => 1) * op("I", s)
-        W += onehot(l => 2, r => 2) * op("I", s)
-        W += onehot(l => 3, r => 3) * op("F", s)
-        W += onehot(l => 4, r => 4) * op("F", s)
-        W += onehot(l => 5, r => 5) * op("F", s)
-        W += onehot(l => 1, r => 2) * op("N", s) * ε
-        W += onehot(l => 4, r => 2) * op("c", s) * V
-        W += onehot(l => 5, r => 2) * op("c†", s) * V
-
+        error("AIM FTNO not implemented for this geometry.")
     end
 
     return W
 end
 
 
-function W_bath_spin_down(s::Index, l::Index, r::Union{Index,Nothing}, ε::Float64, V::Float64; edge::Bool=false)
+function W_bath_spin_down(s::Index, l::Index, r::Union{Index,Nothing}, ε::Float64, V::Float64, Geometry::String; edge::Bool=false)
 
-    if edge
+    if Geometry == "star"
 
-        W = onehot(l => 1) * op("N", s) * ε
-        W += onehot(l => 2) * op("I", s)
-        W += onehot(l => 3) * op("c", s) * V
-        W += onehot(l => 4) * op("c†", s) * V
+        if edge
+
+            W = onehot(l => 1) * op("N", s) * ε
+            W += onehot(l => 2) * op("I", s)
+            W += onehot(l => 3) * op("c", s) * V
+            W += onehot(l => 4) * op("c†", s) * V
+
+        else
+
+            W = onehot(l => 1, r => 1) * op("I", s)
+            W += onehot(l => 2, r => 2) * op("I", s)
+            W += onehot(l => 3, r => 3) * op("F", s)
+            W += onehot(l => 4, r => 4) * op("F", s)
+            W += onehot(l => 1, r => 2) * op("N", s) * ε
+            W += onehot(l => 3, r => 2) * op("c", s) * V
+            W += onehot(l => 4, r => 2) * op("c†", s) * V
+
+        end
+
+    elseif Geometry == "double chain"
+
+        if edge
+
+            W = onehot(l => 1) * op("N", s) * ε
+            W += onehot(l => 2) * op("I", s)
+            W += onehot(l => 5) * op("c", s) * V
+            W += onehot(l => 6) * op("c†", s) * V
+
+        else
+
+            W = onehot(l => 1, r => 1) * op("I", s)
+            W += onehot(l => 2, r => 2) * op("I", s)
+
+            W += onehot(l => 3, r => 5) * op("F", s)
+            W += onehot(l => 4, r => 6) * op("F", s)
+
+            W += onehot(l => 1, r => 2) * op("N", s) * ε
+            W += onehot(l => 1, r => 3) * op("c†", s)
+            W += onehot(l => 1, r => 4) * op("c", s)
+
+            W += onehot(l => 5, r => 2) * op("c", s) * V
+            W += onehot(l => 6, r => 2) * op("c†", s) * V
+
+        end
 
     else
-
-        W = onehot(l => 1, r => 1) * op("I", s)
-        W += onehot(l => 2, r => 2) * op("I", s)
-        W += onehot(l => 3, r => 3) * op("F", s)
-        W += onehot(l => 4, r => 4) * op("F", s)
-        W += onehot(l => 1, r => 2) * op("N", s) * ε
-        W += onehot(l => 3, r => 2) * op("c", s) * V
-        W += onehot(l => 4, r => 2) * op("c†", s) * V
-
+        error("AIM FTNO not implemented for this geometry.")
     end
 
     return W
 end
-
 
 
 function alternating_product_state(L, n)
