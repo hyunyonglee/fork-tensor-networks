@@ -109,15 +109,15 @@ function initialize_tensors_random!(ψ::ForkTensorNetworkState)
         for y = 1:ψ.Ly
 
             if y == ψ.Ly
-                ψ.Ts[x, y] = randomITensor(ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y])
+                ψ.Ts[x, y] = random_itensor(ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y])
             elseif y == 1 && x == 1
-                ψ.Ts[x, y] = randomITensor(ψ.aux_y_idx[x, y], ψ.aux_x_idx[x], ψ.phys_idx[x, y])
+                ψ.Ts[x, y] = random_itensor(ψ.aux_y_idx[x, y], ψ.aux_x_idx[x], ψ.phys_idx[x, y])
             elseif y == 1 && x == ψ.Lx
-                ψ.Ts[x, y] = randomITensor(ψ.aux_y_idx[x, y], ψ.aux_x_idx[x-1], ψ.phys_idx[x, y])
+                ψ.Ts[x, y] = random_itensor(ψ.aux_y_idx[x, y], ψ.aux_x_idx[x-1], ψ.phys_idx[x, y])
             elseif y == 1 && x > 1 && x < ψ.Lx
-                ψ.Ts[x, y] = randomITensor(ψ.aux_y_idx[x, y], ψ.aux_x_idx[x-1], ψ.aux_x_idx[x], ψ.phys_idx[x, y])
+                ψ.Ts[x, y] = random_itensor(ψ.aux_y_idx[x, y], ψ.aux_x_idx[x-1], ψ.aux_x_idx[x], ψ.phys_idx[x, y])
             else
-                ψ.Ts[x, y] = randomITensor(ψ.aux_y_idx[x, y-1], ψ.aux_y_idx[x, y], ψ.phys_idx[x, y])
+                ψ.Ts[x, y] = random_itensor(ψ.aux_y_idx[x, y-1], ψ.aux_y_idx[x, y], ψ.phys_idx[x, y])
             end
 
         end
