@@ -40,7 +40,6 @@ end # struct DMRG
     Run the DMRG algorithm with the Ĥamiltonian Ĥ in FTNO for a given the initial FTNS ψ₀.
     The function returns the ground-state energy E and the optimized FTNS ψ.
         # Example
-        ```julia
         dmrg = DMRG(params)
         E, ψ = run_dmrg!(dmrg, Ĥ, ψ₀)
 
