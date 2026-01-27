@@ -197,3 +197,36 @@ function print_dict(dict::Dict, title::String)
     println()  # 줄바꿈을 위해 추가
 end
 
+
+function alter_overlap_ftn(ψ1::ForkTensorNetworkState, ψ2::ForkTensorNetworkState)
+    tot = 1
+    Tx = 1
+    for x = 1:ψ1.Lx
+        GC.gc()
+        println("current x is = $x")
+        flush(stdout)
+        Ty = 1
+        if x == 1
+            for y = ψ1.Ly:-1:1
+                Ty *= dag(replaceind(ψ1.Ts[x, y], ψ1.phys_idx[x, y], ψ2.phys_idx[x, y])) * noprime(prime(ψ2.Ts[x, y]); tags="Site")
+                # println("Ty",size(Ty.tensor))
+            end
+            Tx *= Ty
+        else#if x < ψ1.Lx
+            alt = dag(ψ1.Ts[x,1]) * Tx
+            alt2 = noprime(alt) * noprime(prime(ψ2.Ts[x, 1]); tags="Backbone,FTNS,x=($(x-1)-$(x)),y=1")
+            zipped = replaceind(replaceind(alt2,inds(alt2)[findall(inds(alt2),"Site")[1]],dag(setprime(ψ1.phys_idx[x,1],4))),inds(alt2)[findall(inds(alt2),"Site")[2]],setprime(ψ2.phys_idx[x,1],5)) * delta(dag(setprime(ψ1.phys_idx[x,1],5)),setprime(ψ1.phys_idx[x,1],4))
+            for y = ψ1.Ly:-1:2
+                Ty *= dag(replaceind(ψ1.Ts[x, y], ψ1.phys_idx[x, y], ψ2.phys_idx[x, y])) * noprime(prime(ψ2.Ts[x, y]); tags="Site")
+                # println("Ty",size(Ty.tensor))
+            end
+            Tx = zipped * Ty
+        end
+
+    end
+        println("Tx",size(Tx.tensor))
+        return scalar(Tx)
+end
+
+    
+

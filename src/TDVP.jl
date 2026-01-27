@@ -43,7 +43,7 @@ function run_tdvp!(tdvp::TDVP, Ĥ::ForkTensorNetworkOperator, ψ::ForkTensorNet
     end
 
     # @printf("* TDVP starts at time %.2f...\n", tdvp.time)
-
+    tol = tdvp.params["svd_tol"]
     for i = 1:max_step
 
         if tdvp.params["verb_level"] > 0
@@ -139,7 +139,7 @@ end
 
 
 function single_site_time_evolution_on_arm!(tdvp::TDVP, Ĥ::ForkTensorNetworkOperator, ψ::ForkTensorNetworkState, direction::String, δt::Union{AbstractFloat,Complex})
-
+    tol = tdvp.params["svd_tol"]
     (x, yc) = ψ.canonical_center
 
     if direction == "right"
@@ -152,9 +152,10 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, Ĥ::ForkTensorNetworkOp
         throw(ArgumentError("Invalid direction"))
     end
 
-
+    χʸlst = ones(ψ.Ly)*tdvp.params["χʸ"]
+    χʸlst[1:4] = [20,40,60,80]
     for y = yi:dy:yf
-
+        χʸ = χʸlst[y]
         if tdvp.params["verb_level"] > 1
             println("** single-site TDVP running on the arm $(direction)ward at (x, y) = ($x, $y).")
         end
@@ -172,7 +173,7 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, Ĥ::ForkTensorNetworkOp
             break
         end
 
-        U, S, ψ.Ts[x, y] = svd(ψ.Ts[x, y], ψ.aux_y_idx[x, y+a]; cutoff=1e-10, righttags=tags(ψ.aux_y_idx[x, y+a]))
+        U, S, ψ.Ts[x, y] = svd(ψ.Ts[x, y], ψ.aux_y_idx[x, y+a]; cutoff=tol,maxdim =χʸlst[y+a], righttags=tags(ψ.aux_y_idx[x, y+a]))
         update_environment!(tdvp, Ĥ, ψ, x, y, direction)
 
         Kₑ = (+1im * δt, tdvp.εl[x, y+dyₗ], tdvp.εr[x, y+dyᵣ])
@@ -193,7 +194,7 @@ end
 
 
 function single_site_time_evolution_on_backbone!(tdvp::TDVP, Ĥ::ForkTensorNetworkOperator, ψ::ForkTensorNetworkState, direction::String, δt::Union{AbstractFloat,Complex})
-
+    tol = tdvp.params["svd_tol"]
     (x, y) = ψ.canonical_center
     y != 1 && throw(ArgumentError("Canonical center should be at the leftmost site of the system when updating the backbone."))
 
@@ -211,7 +212,7 @@ function single_site_time_evolution_on_backbone!(tdvp::TDVP, Ĥ::ForkTensorNetw
 
     Ĥₑ = (-1im * δt, tdvp.εu[x], Ĥ.Ws[x, 1], tdvp.εr[x, 1], tdvp.εd[x])
     ψ.Ts[x, 1] .= local_time_evolution(Ĥₑ, ψ.Ts[x, 1], tdvp.params["Ncut"], tdvp.params["verb_level"])
-    U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=1e-10, righttags=tags(ψ.aux_x_idx[x+a]))
+    U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=tol, righttags=tags(ψ.aux_x_idx[x+a]))
 
     update_environment!(tdvp, Ĥ, ψ, x, 1, direction)
 
@@ -268,10 +269,11 @@ end
 function two_site_time_evolution_arm_right!(tdvp::TDVP, Ĥ::ForkTensorNetworkOperator, ψ::ForkTensorNetworkState, δt::Union{AbstractFloat,Complex})
 
     ψ.canonical_center[2] != 1 && throw(ArgumentError("Canonical center should be at the leftmost site of the system when time-evolving the arm right."))
-
+    tol = tdvp.params["svd_tol"]
     x = ψ.canonical_center[1]
     χʸ = tdvp.params["χʸ"]
-
+    χʸlst = ones(ψ.Ly)*tdvp.params["χʸ"]
+    χʸlst[1:4] = [20,40,60,80]
     for y = 1:(ψ.Ly-1)
 
         if tdvp.params["verb_level"] > 1
@@ -283,13 +285,13 @@ function two_site_time_evolution_arm_right!(tdvp::TDVP, Ĥ::ForkTensorNetworkOp
 
             Ĥₑ = (-1im * δt, tdvp.εu[x], tdvp.εd[x], Ĥ.Ws[x, y], Ĥ.Ws[x, y+1], tdvp.εr[x, y+1])
             T = local_time_evolution(Ĥₑ, ψ.Ts[x, y] * ψ.Ts[x, y+1], tdvp.params["Ncut"], tdvp.params["verb_level"])
-            V, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y+1], ψ.phys_idx[x, y+1]); cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y]))
+            V, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y+1], ψ.phys_idx[x, y+1]); cutoff=tol, maxdim=χʸlst[y+1], righttags=tags(ψ.aux_y_idx[x, y]))
 
         else
 
             Ĥₑ = (-1im * δt, tdvp.εl[x, y], Ĥ.Ws[x, y], Ĥ.Ws[x, y+1], tdvp.εr[x, y+1])
             T = local_time_evolution(Ĥₑ, ψ.Ts[x, y] * ψ.Ts[x, y+1], tdvp.params["Ncut"], tdvp.params["verb_level"])
-            ψ.Ts[x, y], S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=1e-10, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y]))
+            ψ.Ts[x, y], S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=tol, maxdim=χʸlst[y-1], lefttags=tags(ψ.aux_y_idx[x, y]))
 
         end
         update_environment!(tdvp, Ĥ, ψ, x, y, "right")
@@ -315,10 +317,11 @@ end
 function two_site_time_evolution_arm_left!(tdvp::TDVP, Ĥ::ForkTensorNetworkOperator, ψ::ForkTensorNetworkState, δt::Union{AbstractFloat,Complex})
 
     ψ.canonical_center[2] != ψ.Ly && throw(ArgumentError("Canonical center should be at the rightmost site of the system when time-evolving the arm left."))
-
+    tol = tdvp.params["svd_tol"]
     x = ψ.canonical_center[1]
     χʸ = tdvp.params["χʸ"]
-
+    χʸlst = ones(ψ.Ly)*tdvp.params["χʸ"]
+    χʸlst[1:4] = [20,40,60,80]
     for y = ψ.Ly:-1:2
 
         if tdvp.params["verb_level"] > 1
@@ -330,13 +333,13 @@ function two_site_time_evolution_arm_left!(tdvp::TDVP, Ĥ::ForkTensorNetworkOpe
 
             Ĥₑ = (-1im * δt, tdvp.εu[x], tdvp.εd[x], Ĥ.Ws[x, y-1], Ĥ.Ws[x, y], tdvp.εr[x, y])
             T = local_time_evolution(Ĥₑ, ψ.Ts[x, y-1] * ψ.Ts[x, y], tdvp.params["Ncut"], tdvp.params["verb_level"])
-            ψ.Ts[x, y], S, U = svd(T, (ψ.aux_y_idx[x, y], ψ.phys_idx[x, y]); cutoff=1e-10, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y-1]))
+            ψ.Ts[x, y], S, U = svd(T, (ψ.aux_y_idx[x, y], ψ.phys_idx[x, y]); cutoff=tol, maxdim=χʸlst[y], lefttags=tags(ψ.aux_y_idx[x, y-1]))
 
         else
 
             Ĥₑ = (-1im * δt, tdvp.εl[x, y-1], Ĥ.Ws[x, y-1], Ĥ.Ws[x, y], tdvp.εr[x, y])
             T = local_time_evolution(Ĥₑ, ψ.Ts[x, y-1] * ψ.Ts[x, y], tdvp.params["Ncut"], tdvp.params["verb_level"])
-            U, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y-1]))
+            U, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=tol, maxdim=χʸlst[y], righttags=tags(ψ.aux_y_idx[x, y-1]))
 
         end
         update_environment!(tdvp, Ĥ, ψ, x, y, "left")
@@ -362,7 +365,7 @@ function two_site_time_evolution_backbone_down!(tdvp::TDVP, Ĥ::ForkTensorNetwo
 
     ψ.canonical_center[1] == ψ.Lx && throw(ArgumentError("xc should not be at the Lx when updating the backbone down."))
     ψ.canonical_center[2] != 1 && throw(ArgumentError("Canonical center should be at the leftmost site of the system when updating the backbone down."))
-
+    tol = tdvp.params["svd_tol"]
     x = ψ.canonical_center[1]
     χˣ = tdvp.params["χˣ"]
 
@@ -374,9 +377,9 @@ function two_site_time_evolution_backbone_down!(tdvp::TDVP, Ĥ::ForkTensorNetwo
     T = local_time_evolution(Ĥₑ, ψ.Ts[x, 1] * ψ.Ts[x+1, 1], tdvp.params["Ncut"], tdvp.params["verb_level"])
 
     if x == 1
-        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
+        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=tol, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     else
-        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
+        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=tol, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     end
     update_environment!(tdvp, Ĥ, ψ, x, 1, "down")
 
@@ -392,6 +395,7 @@ end
 
 
 function two_site_time_evolution_backbone_up!(tdvp::TDVP, Ĥ::ForkTensorNetworkOperator, ψ::ForkTensorNetworkState, δt::Union{AbstractFloat,Complex})
+    tol = tdvp.params["svd_tol"]
 
     ψ.canonical_center[1] == 1 && throw(ArgumentError("xc should not be at x=1 when updating the backbone up."))
     ψ.canonical_center[2] != 1 && throw(ArgumentError("Canonical center should be at the leftmost site of the system when updating the backbone down."))
@@ -407,9 +411,9 @@ function two_site_time_evolution_backbone_up!(tdvp::TDVP, Ĥ::ForkTensorNetwork
     T = local_time_evolution(Ĥₑ, ψ.Ts[x-1, 1] * ψ.Ts[x, 1], tdvp.params["Ncut"], tdvp.params["verb_level"])
 
     if x == ψ.Lx
-        U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=1e-10, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
+        U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=tol, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
     else
-        V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
+        V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=tol, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
     end
     ψ.Ts[x, 1] = V
     update_environment!(tdvp, Ĥ, ψ, x, 1, "up")
@@ -474,6 +478,5 @@ function local_time_evolution(Ĥₑ::Tuple{Vararg{Union{ITensor,Complex,Abstrac
     end
 
 end
-
 
 
