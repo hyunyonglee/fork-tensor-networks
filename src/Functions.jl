@@ -1,17 +1,13 @@
 """
-    General functions
-    Copyright (C) 2024 Hyun-Yong Lee <hyunyong@korea.ac.kr>
-"""
+    exp_taylor_sum(A, v₀, Ncut) -> ITensor
 
-
-"""
-    exp_taylor_sum(A::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, v₀::ITensor, Ncut::Integer) -> ITensor
-    return the Taylor sum of the exponential operator A acting on the input vector in ITensor
+Compute the Taylor expansion of exp(A)|v₀⟩ truncated at order `Ncut`.
+`A` is represented as a tuple of ITensors (and scalars) applied via contraction.
 """
 function exp_taylor_sum(A::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, v₀::ITensor, Ncut::Integer)
 
-    vₙ::ITensor = deepcopy(v₀)
-    v::ITensor = deepcopy(v₀)
+    vₙ::ITensor = copy(v₀)
+    v::ITensor = copy(v₀)
     for n = 1:Ncut
         vₙ .= noprime(reduce(*, A, init=vₙ))
         v .+= vₙ .* (1.0 / factorial(n))
@@ -21,21 +17,36 @@ function exp_taylor_sum(A::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, 
 end
 
 
+"""
+    krylov_expm(H, x0; max_iter=10, tol=1e-8, verbose=false) -> ITensor
 
+Compute exp(H)|x0⟩ using the Krylov subspace (Lanczos) method.
+Builds a tridiagonal representation in the Krylov basis and exponentiates it.
+
+# Arguments
+- `H`: Effective Hamiltonian as a tuple of ITensors/scalars (includes the prefactor, e.g., -iδt).
+- `x0`: Initial ITensor vector.
+- `max_iter`: Maximum Krylov subspace dimension.
+- `tol`: Convergence tolerance for the matrix exponential.
+- `verbose`: Print convergence information.
+"""
 function krylov_expm(H::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, x0::ITensor; max_iter=10, tol=1.0E-8, verbose=false)
 
-    Vs = Vector{ITensor}(undef, max_iter + 1) # Lanczos vectors
-    T = Matrix{Complex}(undef, max_iter, max_iter) # Lanczos tridiagonal matrix
+    Vs = Vector{ITensor}(undef, max_iter + 1)
+    T = Matrix{Complex}(undef, max_iter, max_iter)
     fill!(T, 0.0 + 0.0im)
 
     norm_x = norm(x0)
-    Vs[1] = deepcopy(x0) / norm_x
-    exp_Av = deepcopy(x0)
-    δexp_Av = deepcopy(x0)
-    exp_Av_current = deepcopy(x0)
+    if norm_x < 1e-14
+        return x0
+    end
+    Vs[1] = x0 / norm_x
+    exp_Av = similar(x0)
+    δexp_Av = similar(x0)
+    exp_Av_current = similar(x0)
     fill!(exp_Av, 0.0 + 0.0im)
 
-    w = deepcopy(x0)
+    w = similar(x0)
     residual = 0.0
 
     for j = 1:max_iter
@@ -48,46 +59,64 @@ function krylov_expm(H::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, x0:
 
         if j < max_iter
             T[j+1, j] = norm(w)
-            Vs[j+1] = deepcopy(w) / T[j+1, j]
+            if abs(T[j+1, j]) < 1e-14
+                exp_T = exp(T[1:j, 1:j])
+                fill!(exp_Av_current, 0.0 + 0.0im)
+                for i = 1:j
+                    exp_Av_current .+= Vs[i] * exp_T[i, 1] * norm_x
+                end
+                verbose && println("--- Krylov exponentiation: invariant subspace found at iteration $j.")
+                return exp_Av_current
+            end
+            Vs[j+1] = w / T[j+1, j]
         end
 
-        # Calculate current approximation
         exp_T = exp(T[1:j, 1:j])
         fill!(exp_Av_current, 0.0 + 0.0im)
         for i = 1:j
             exp_Av_current .+= Vs[i] * exp_T[i, 1] * norm_x
         end
 
-        # Convergence check
         if j > 1
             δexp_Av .= exp_Av_current - exp_Av
             residual = abs(norm(δexp_Av) / norm(exp_Av_current))
             if residual < tol
-                if verbose
-                    println("--- Krylov exponentiation converged after $j iterations with the residual $residual.")
-                end
+                verbose && println("--- Krylov exponentiation converged after $j iterations with the residual $residual.")
                 return exp_Av_current
             end
         end
 
-        # Update for next iteration
         exp_Av .= exp_Av_current
 
-    end # end for j
-
-    if verbose
-        println("--- Krylov exponentiation NOT converged after $max_iter iterations with the residual $residual.")
     end
+
+    verbose && println("--- Krylov exponentiation NOT converged after $max_iter iterations with the residual $residual.")
 
     return exp_Av
 end
 
 
+"""
+    lanczos(H, x0; max_iter=10, E_tol=1e-14, R_tol=1e-8, prt=false) -> (ITensor, Float64)
 
-function lanczos(H::Tuple{Vararg{Union{ITensor,Float64}}}, x0::ITensor; max_iter=3, E_tol=1.0E-14, R_tol=1.0E-8, prt=false)
+Find the lowest eigenvalue and eigenvector of `H` using the Lanczos algorithm.
+`H` is an effective Hamiltonian represented as a tuple of ITensors applied via contraction.
+
+Returns `(Ritz_vec, E)` where `Ritz_vec` is the ground-state approximation and
+`E` is the corresponding eigenvalue in the Krylov subspace.
+
+# Arguments
+- `H`: Effective Hamiltonian as a tuple of ITensors.
+- `x0`: Initial guess ITensor.
+- `max_iter`: Maximum number of Lanczos iterations.
+- `E_tol`: Convergence tolerance for energy (relative change).
+- `R_tol`: Convergence tolerance for Ritz residual.
+- `prt`: Print convergence diagnostics.
+"""
+function lanczos(H::Tuple{Vararg{Union{ITensor,Float64}}}, x0::ITensor; max_iter=10, E_tol=1.0E-14, R_tol=1.0E-8, prt=false)
 
     Lan_vecs::Vector{ITensor} = ITensor[]
-    Ritz_vec::ITensor = deepcopy(x0) #ITensor(ComplexF64)
+    Ritz_vec::ITensor = similar(x0)
 
     a = Float64[]
     b = Float64[]
@@ -99,62 +128,45 @@ function lanczos(H::Tuple{Vararg{Union{ITensor,Float64}}}, x0::ITensor; max_iter
     Residual::Float64 = 10.0
     E_shift::Float64 = 0.0
 
-    x2::ITensor = deepcopy(x0)
-    x1::ITensor = deepcopy(x0)
-    H_x::ITensor = deepcopy(x0)
+    x2::ITensor = copy(x0)
+    x1::ITensor = similar(x0)
+    H_x::ITensor = similar(x0)
     fill!(H_x, 0.0 + 0.0im)
     β::Float64 = norm(x2)
     for i in 1:max_iter
 
-        x1 .= deepcopy(x2) / β
-        push!(Lan_vecs, deepcopy(x1))
+        x1 .= x2 / β
+        push!(Lan_vecs, copy(x1))
 
         H_x .= noprime(reduce(*, H, init=x1))
         x2 .= H_x - E_shift * x1
         α = real(scalar(dag(x1) * x2))
-        append!(a, deepcopy(α))
+        append!(a, α)
 
-        if (i > 1)
-            N_ortho = 2
-        else
-            N_ortho = 1
-        end
+        N_ortho = (i > 1) ? 2 : 1
 
         for j in 1:N_ortho
-            # Gram-schmidt orthogonalization: |i> - Σⱼ|j><j|i>
             x2 .-= (dag(Lan_vecs[end-j+1]) * x2) * Lan_vecs[end-j+1]
         end
 
-        # krylov Hamiltonian construction
-        if (i != 1 && size(b)[1] > 0)
-            H_kryl = diagm([a[i] for i ∈ 1:size(a)[1]]) + diagm(1 => [b[i] for i ∈ 1:size(b)[1]]) + diagm(-1 => [b[i] for i ∈ 1:size(b)[1]])
+        H_kryl = SymTridiagonal(copy(a), copy(b))
 
-        elseif (i == 1)
-            H_kryl = diagm([a[i] for i ∈ 1:size(a)[1]])
-            # E_old = real(a[i] + 0.0);  # No matter to exit condition.
-        end
-
-        F = eigen(SymTridiagonal(H_kryl))
+        F = eigen(H_kryl)
         E_new = F.values[1]
         kryl_eigenvec = F.vectors[:, 1]
 
-        if (i > 1)
-            #ΔE = norm( 1.0 - E_new / E_old )/abs(E_old);
-            ΔE = norm(1.0 - E_new / E_old)
-        else
-            ΔE = 10.0
-        end
+        ΔE = (i > 1) ? norm(1.0 - E_new / E_old) : 10.0
 
         E_old = copy(E_new)
         E_kryl = E_new + E_shift
         Residual = norm(x2) * abs(kryl_eigenvec[end])
 
         if (ΔE < E_tol || Residual < R_tol || β < 1.0E-12)
-            fill!(Ritz_vec, 0.0 + 0.0im)#Initilization
-            for ik in 1:size(a)[1]
+            fill!(Ritz_vec, 0.0 + 0.0im)
+            for ik in 1:length(a)
                 Ritz_vec += kryl_eigenvec[ik] * Lan_vecs[ik]
             end
-            if (prt == true)
+            if prt
                 println("       [Lanczos] Converged after ", i, " iterations.")
                 println("       [Lanczos] ΔE(kryl) = ", ΔE, ", E(kryl) = ", E_kryl)
                 println("       [Lanczos] Ritz residual |β| = ", Residual)
@@ -162,11 +174,11 @@ function lanczos(H::Tuple{Vararg{Union{ITensor,Float64}}}, x0::ITensor; max_iter
             break
 
         elseif (i == max_iter)
-            fill!(Ritz_vec, 0.0 + 0.0im)#Initilization
-            for ik in 1:size(a)[1]
+            fill!(Ritz_vec, 0.0 + 0.0im)
+            for ik in 1:length(a)
                 Ritz_vec += kryl_eigenvec[ik] * Lan_vecs[ik]
             end
-            if (prt == true)
+            if prt
                 println("       [Lanczos] Not Converged after ", i, " iterations.")
                 println("       [Lanczos] ΔE(kryl) = ", ΔE, ", E(kryl) = ", E_kryl)
                 println("       [Lanczos] Ritz residual |β| = ", Residual)
@@ -175,25 +187,24 @@ function lanczos(H::Tuple{Vararg{Union{ITensor,Float64}}}, x0::ITensor; max_iter
         end
 
         β = norm(x2)
-        append!(b, deepcopy(β))
+        append!(b, β)
     end
     return Ritz_vec, E_new
 end
 
 
+"""
+    print_dict(dict, title)
+
+Pretty-print a `Dict` with a title header. The `"model"` key is printed first if present.
+"""
 function print_dict(dict::Dict, title::String)
     println("$title:")
-    # "model" 키가 있다면 먼저 출력
     if haskey(dict, "model")
         println("*  model: $(dict["model"])")
     end
-
-    # 나머지 키들을 출력
     for (key, value) in dict
-        if key != "model"
-            println("*  $key: $value")
-        end
+        key != "model" && println("*  $key: $value")
     end
-    println()  # 줄바꿈을 위해 추가
+    println()
 end
-
