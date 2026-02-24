@@ -1,6 +1,8 @@
 # Data folder
 logs/
 examples/
+etc/
+src/backup_before_refactor/
 
 # Garbage
 .DS_Store
