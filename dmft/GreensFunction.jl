@@ -143,4 +143,124 @@ function complex_time_to_spectral(G_greater_ct::AbstractVector{<:Number},
                                          pole_filter_bound=pole_filter_bound)
 end
 
+export compute_greens_function
+
+"""
+    compute_greens_function(H, ψ₀, E₀, site_x, site_y, tdvp_constructor, tdvp_params_constructor, run_tdvp_fn, overlap_fn, apply_ops_fn;
+        α=0.0, δt=0.1, max_step=100, χˣ=20, χʸ=20, Ncut=10,
+        tdvp_method=:two_site, subspace_expansion=:none, cbe_δ=0.1,
+        ε=1e-6, η=1e-10, pole_filter_bound=0.0, verb_level=0)
+
+Compute retarded Green's function from ground state using complex-time TDVP.
+
+1. Creates particle (c†|ψ₀⟩) and hole (c|ψ₀⟩) excitations
+2. Evolves each with TDVP using complex time steps δt·e^{∓iα}
+3. Collects G^>(t;α) and G^<(t;α)
+4. If α > 0: ESPRIT 2-pass → ComplexPoleGF
+5. If α ≈ 0: direct Fourier transform → GridGF
+
+Returns: (SpectralRepresentation, t_grid, G_greater, G_lesser)
+
+The FTN functions are passed as arguments to avoid hard dependency on ForkTensorNetworks.
+"""
+function compute_greens_function(H, ψ₀, E₀::Real, site_x::Int, site_y::Int,
+        tdvp_constructor, tdvp_params_constructor, run_tdvp_fn, overlap_fn, apply_ops_fn;
+        α::Real=0.0, δt::Real=0.1, max_step::Int=100,
+        χˣ::Int=20, χʸ::Int=20, Ncut::Int=10,
+        tdvp_method::Symbol=:two_site,
+        subspace_expansion::Symbol=:none, cbe_δ::Float64=0.1,
+        ε::Real=1e-6, η::Float64=1e-10, pole_filter_bound::Float64=0.0,
+        verb_level::Int=0, ω_max::Float64=10.0, broadening::Float64=0.05)
+
+    t_grid = collect(0:max_step) .* δt
+
+    # ── Create excitations ──
+
+    # Particle excitation: c†|ψ₀⟩
+    ψ_plus = deepcopy(ψ₀)
+    apply_ops_fn(ψ_plus, [(site_x, site_y, "Cdag")])
+    n_plus_sq = overlap_fn(ψ_plus, ψ_plus)
+    n_plus = sqrt(abs(n_plus_sq))
+    if n_plus > 1e-15
+        for x in 1:ψ_plus.Lx, y in 1:ψ_plus.Ly
+            ψ_plus.Ts[x, y] ./= n_plus
+        end
+    end
+
+    # Hole excitation: c|ψ₀⟩
+    ψ_minus = deepcopy(ψ₀)
+    apply_ops_fn(ψ_minus, [(site_x, site_y, "C")])
+    n_minus_sq = overlap_fn(ψ_minus, ψ_minus)
+    n_minus = sqrt(abs(n_minus_sq))
+    if n_minus > 1e-15
+        for x in 1:ψ_minus.Lx, y in 1:ψ_minus.Ly
+            ψ_minus.Ts[x, y] ./= n_minus
+        end
+    end
+
+    # ── Save initial states for overlap ──
+    ψ_plus_0  = deepcopy(ψ_plus)
+    ψ_minus_0 = deepcopy(ψ_minus)
+
+    # ── Complex time steps ──
+    δt_greater = ComplexF64(δt * exp(-im * α))   # G^>: z₁(t) = e^{-iα}t
+    δt_lesser  = ComplexF64(δt * exp(im * α))    # G^<: z₂(t) = e^{iα}t
+
+    # ── Setup TDVP instances ──
+    tdvp_gt = tdvp_constructor(tdvp_params_constructor(;
+        χˣ=χˣ, χʸ=χʸ, method=tdvp_method, δt=δt_greater,
+        Ncut=Ncut, subspace_expansion=subspace_expansion, δ=cbe_δ,
+        verb_level=verb_level
+    ))
+
+    tdvp_lt = tdvp_constructor(tdvp_params_constructor(;
+        χˣ=χˣ, χʸ=χʸ, method=tdvp_method, δt=δt_lesser,
+        Ncut=Ncut, subspace_expansion=subspace_expansion, δ=cbe_δ,
+        verb_level=verb_level
+    ))
+
+    # ── Collect Green's functions ──
+    G_greater = Vector{ComplexF64}(undef, max_step + 1)
+    G_lesser  = Vector{ComplexF64}(undef, max_step + 1)
+
+    # t = 0
+    G_greater[1] = -im * n_plus^2
+    G_lesser[1]  = im * n_minus^2
+
+    for step in 1:max_step
+        run_tdvp_fn(tdvp_gt, H, ψ_plus, 1)
+        run_tdvp_fn(tdvp_lt, H, ψ_minus, 1)
+
+        t = step * δt
+        z1 = exp(-im * α) * t
+        z2 = exp(im * α) * t
+
+        ovlp_gt = overlap_fn(ψ_plus_0, ψ_plus)
+        ovlp_lt = overlap_fn(ψ_minus_0, ψ_minus)
+
+        G_greater[step + 1] = -im * exp(im * E₀ * z1) * n_plus^2 * ovlp_gt
+        G_lesser[step + 1]  = im * exp(-im * E₀ * z2) * n_minus^2 * conj(ovlp_lt)
+    end
+
+    # ── Analytic continuation ──
+    if abs(α) < 1e-12
+        # Real-time: direct Fourier transform → GridGF
+        G_R_t = G_greater .- G_lesser
+        ω_grid = collect(range(-ω_max, ω_max, length=2001))
+        G_R_ω = zeros(ComplexF64, length(ω_grid))
+        for (i, ω) in enumerate(ω_grid)
+            for (j, t) in enumerate(t_grid)
+                G_R_ω[i] += G_R_t[j] * exp(im * ω * t) * exp(-broadening * t) * δt
+            end
+        end
+        gf = GridGF(ω_grid, G_R_ω)
+    else
+        # Complex-time: ESPRIT 2-pass pipeline → ComplexPoleGF
+        gf = complex_time_to_spectral(G_greater, G_lesser, δt, α;
+                                       ε=ε, η=η, pole_filter_bound=pole_filter_bound)
+    end
+
+    return gf, t_grid, G_greater, G_lesser
+end
+
 end # module
