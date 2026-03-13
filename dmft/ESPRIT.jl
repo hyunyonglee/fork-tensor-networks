@@ -3,7 +3,7 @@ module ESPRIT
 
 using LinearAlgebra
 
-export ESPRITResult, esprit, solve_vandermonde
+export ESPRITResult, esprit, solve_vandermonde, filter_and_refit
 
 struct ESPRITResult
     R::Vector{ComplexF64}   # weights
@@ -67,6 +67,22 @@ function solve_vandermonde(f::AbstractVector{<:Number}, s::AbstractVector{<:Numb
 
     R = V \ ComplexF64.(f)
     return R
+end
+
+"""
+    filter_and_refit(f, s_all, Δt, keep_mask) -> ESPRITResult
+
+Keep only modes where keep_mask[l] == true, then refit weights
+by solving the Vandermonde system with the remaining exponents.
+"""
+function filter_and_refit(f::AbstractVector{<:Number}, s_all::AbstractVector{<:Number},
+                          Δt::Real, keep_mask::AbstractVector{Bool})
+    s_kept = s_all[keep_mask]
+    if isempty(s_kept)
+        return ESPRITResult(ComplexF64[], ComplexF64[])
+    end
+    R_kept = solve_vandermonde(f, s_kept, Δt)
+    return ESPRITResult(R_kept, s_kept)
 end
 
 end # module

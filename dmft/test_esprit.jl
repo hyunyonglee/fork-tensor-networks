@@ -59,3 +59,24 @@ end
     dists = abs.(result.s .- s_true[1])
     @test minimum(dists) < 1e-3
 end
+
+@testset "filter_and_refit" begin
+    Δt = 0.1
+    N = 200
+    t_grid = collect(0:N-1) .* Δt
+
+    # Two modes: one stable (decaying), one unstable (growing)
+    s_stable = -0.1 + 2.0im
+    s_unstable = 0.05 + 1.0im   # positive real part → growing
+    R1, R2 = 1.0+0im, 0.5+0im
+    f = R1 .* exp.(s_stable .* t_grid) .+ R2 .* exp.(s_unstable .* t_grid)
+
+    result = esprit(f, Δt; ε=1e-10)
+
+    # Filter: keep only modes with |exp(s * Δt)| ≤ 1 (non-growing)
+    keep = abs.(exp.(result.s .* Δt)) .<= 1.0 + 1e-10
+    filtered = ESPRIT.filter_and_refit(f, result.s, Δt, keep)
+
+    @test length(filtered.s) == 1
+    @test isapprox(filtered.s[1], s_stable; atol=1e-3)
+end
