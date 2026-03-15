@@ -209,3 +209,19 @@ function print_dict(dict::Dict, title::String)
     end
     println()
 end
+
+
+"""
+    von_neumann_entropy(S::ITensor) -> Float64
+
+Compute von Neumann entanglement entropy from singular value diagonal tensor S.
+S_vN = -Σ pᵢ log(pᵢ), where pᵢ = sᵢ² / Σ sⱼ².
+"""
+function von_neumann_entropy(S::ITensor)
+    s_vals = [S[i, i] for i in 1:minimum(size(S))]
+    p = s_vals .^ 2
+    p_sum = sum(p)
+    p_sum == 0 && return 0.0
+    p ./= p_sum
+    return -sum(pᵢ > 0 ? pᵢ * log(pᵢ) : 0.0 for pᵢ in p)
+end

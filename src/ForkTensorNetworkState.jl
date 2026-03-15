@@ -32,6 +32,7 @@ mutable struct ForkTensorNetworkState
     aux_x_idx::Vector{Index}
     aux_y_idx::Matrix{Index}
     Ts::Matrix{ITensor}
+    max_S::Float64
 
 
     """
@@ -49,7 +50,8 @@ mutable struct ForkTensorNetworkState
             Matrix{Index}(undef, Lx, Ly),
             Vector{Index}(undef, Lx - 1),
             Matrix{Index}(undef, Lx, Ly - 1),
-            Matrix{ITensor}(undef, Lx, Ly)
+            Matrix{ITensor}(undef, Lx, Ly),
+            0.0
         )
         create_fork_graph_matrix!(ψ)
         initialize_indices!(ψ, phys_idx)
@@ -73,7 +75,8 @@ mutable struct ForkTensorNetworkState
             phys_idx,
             Vector{Index}(undef, Lx - 1),
             Matrix{Index}(undef, Lx, Ly - 1),
-            Matrix{ITensor}(undef, Lx, Ly)
+            Matrix{ITensor}(undef, Lx, Ly),
+            0.0
         )
         create_fork_graph_matrix!(ψ)
         initialize_indices!(ψ)
@@ -96,7 +99,8 @@ mutable struct ForkTensorNetworkState
             Matrix{Integer}(undef, Lx * Ly, Lx * Ly),
             Matrix{Integer}(undef, Lx * Ly, 2),
             Matrix{Integer}(undef, Lx, Ly),
-            phys_idx, aux_x_idx, aux_y_idx, Ts
+            phys_idx, aux_x_idx, aux_y_idx, Ts,
+            0.0
         )
         create_fork_graph_matrix!(ψ)
         return ψ
@@ -231,6 +235,7 @@ function canonize_arm!(ψ::ForkTensorNetworkState, x::Integer, yi::Integer, yf::
         else
             U, S, V = svd(ψ.Ts[x, y], ψ.aux_y_idx[x, y+a]; cutoff=1e-12, righttags=tags(ψ.aux_y_idx[x, y+a]))
         end
+        ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
         ψ.Ts[x, y] = V
         ψ.Ts[x, y+dy] = (S * U) * ψ.Ts[x, y+dy]
         ψ.aux_y_idx[x, y+a] = commonind(S, V)
@@ -268,6 +273,7 @@ function canonize_backbone!(ψ::ForkTensorNetworkState, xi::Integer, xf::Integer
         else
             U, S, V = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=1e-12, righttags=tags(ψ.aux_x_idx[x+a]))
         end
+        ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
         ψ.Ts[x, 1] = V
         ψ.Ts[x+dx, 1] = (S * U) * ψ.Ts[x+dx, 1]
         ψ.aux_x_idx[x+a] = commonind(S, V)

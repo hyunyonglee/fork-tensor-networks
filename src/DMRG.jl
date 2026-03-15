@@ -97,7 +97,7 @@ function resolve_χ(schedule::Vector{Pair{Int,Int}}, default::Int, sweep::Int)
     for (max_sweep, χ) in schedule
         sweep <= max_sweep && return χ
     end
-    return last(schedule).second
+    return default
 end
 
 
@@ -139,6 +139,7 @@ mutable struct DMRG
 end
 
 
+
 """
     run_dmrg!(dmrg, H, ψ₀) -> (E, ψ)
 
@@ -163,14 +164,17 @@ function run_dmrg!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ₀::ForkTensorNe
     se = dmrg.params.subspace_expansion
 
     set_initial_environments!(dmrg, H, ψ)
+    χˣ_max = dmrg.params.χˣ
+    χʸ_max = dmrg.params.χʸ
     for i = 1:dmrg.params.max_iter
 
         dmrg.current_sweep = i
         empty!(dmrg.cbe_stats)
+        ψ.max_S = 0.0
 
         # Resolve χ for this sweep (schedule or constant)
-        dmrg.params.χˣ = resolve_χ(dmrg.params.χˣ_schedule, dmrg.params.χˣ, i)
-        dmrg.params.χʸ = resolve_χ(dmrg.params.χʸ_schedule, dmrg.params.χʸ, i)
+        dmrg.params.χˣ = resolve_χ(dmrg.params.χˣ_schedule, χˣ_max, i)
+        dmrg.params.χʸ = resolve_χ(dmrg.params.χʸ_schedule, χʸ_max, i)
         ψ.χˣ = dmrg.params.χˣ
         ψ.χʸ = dmrg.params.χʸ
 
@@ -200,7 +204,10 @@ function run_dmrg!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ₀::ForkTensorNe
         E₀ = dmrg.E
 
         if dmrg.params.verbose
-            println("Iteration: ", i, ", Energy: ", dmrg.E, ", δE: ", δE, ", χˣ: ", dmrg.params.χˣ, ", χʸ: ", dmrg.params.χʸ)
+            actual_χˣ = maximum(dim(ψ.aux_x_idx[x]) for x in 1:ψ.Lx-1)
+            actual_χʸ = maximum(dim(ψ.aux_y_idx[x,y]) for x in 1:ψ.Lx for y in 1:ψ.Ly-1)
+            @printf("Iteration: %d, Energy: %.12f, δE: %.4e, χˣ: %d(%d), χʸ: %d(%d), max_S: %.4f\n",
+                i, dmrg.E, δE, dmrg.params.χˣ, actual_χˣ, dmrg.params.χʸ, actual_χʸ, ψ.max_S)
             if se in (:cbe, :cbe_3s) && !isempty(dmrg.cbe_stats)
                 total = sum(values(dmrg.cbe_stats))
                 n_success = get(dmrg.cbe_stats, :success, 0)
@@ -397,6 +404,7 @@ function two_site_step_arm_right!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ::
         U, S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=1e-12, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y]))
         dmrg.envs.el[x, y+1] = U * dmrg.envs.el[x, y] * H.Ws[x, y] * prime(dag(U))
     end
+    ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
 
     ψ.Ts[x, y] = U
     ψ.Ts[x, y+1] = S * V
@@ -426,6 +434,7 @@ function two_site_step_arm_left!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ::F
         T, dmrg.E = lanczos((dmrg.envs.el[x, y-1], H.Ws[x, y-1], H.Ws[x, y], dmrg.envs.er[x, y]), ψ.Ts[x, y-1] * ψ.Ts[x, y];)
         U, S, V = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y-1]))
     end
+    ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     dmrg.envs.er[x, y-1] = V * dmrg.envs.er[x, y] * H.Ws[x, y] * prime(dag(V))
 
     ψ.Ts[x, y] = V
@@ -491,6 +500,7 @@ function two_site_update_backbone_down!(dmrg::DMRG, H::ForkTensorNetworkOperator
     else
         U, S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     end
+    ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     dmrg.envs.eu[x+1] = U * dmrg.envs.eu[x] * dmrg.envs.er[x, 1] * H.Ws[x, 1] * prime(dag(U))
 
     ψ.Ts[x, 1] = U
@@ -522,6 +532,7 @@ function two_site_update_backbone_up!(dmrg::DMRG, H::ForkTensorNetworkOperator, 
     else
         V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
     end
+    ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     dmrg.envs.ed[x-1] = V * dmrg.envs.ed[x] * dmrg.envs.er[x, 1] * H.Ws[x, 1] * prime(dag(V))
 
     ψ.Ts[x, 1] = V
