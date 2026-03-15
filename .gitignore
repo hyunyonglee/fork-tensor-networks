@@ -3,10 +3,9 @@ logs/
 examples/
 etc/
 src/backup_before_refactor/
-dmft/*
-!dmft/ESPRIT.jl
-!dmft/test_esprit.jl
+dmft/
 .claude/
+docs/
 
 # Garbage
 .DS_Store

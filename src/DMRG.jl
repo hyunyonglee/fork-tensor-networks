@@ -6,6 +6,9 @@ Typed parameter struct for DMRG, replacing `Dict{String,Any}` for type stability
 # Fields
 - `χˣ::Int`: Maximum bond dimension along the backbone (x-direction).
 - `χʸ::Int`: Maximum bond dimension along the arms (y-direction).
+- `χˣ_schedule::Vector{Pair{Int,Int}}`: Per-sweep schedule for χˣ, e.g., `[5 => 10, 10 => 20]`
+  means sweep 1–5 uses χˣ=10, sweep 6–10 uses χˣ=20. Empty means constant `χˣ`.
+- `χʸ_schedule::Vector{Pair{Int,Int}}`: Per-sweep schedule for χʸ (same format).
 - `max_iter::Int`: Maximum number of DMRG sweeps.
 - `convergence_tol::Float64`: Convergence tolerance for relative energy change.
 - `method::Symbol`: `:single_site`, `:two_site`, or `:hybrid`.
@@ -19,6 +22,8 @@ Typed parameter struct for DMRG, replacing `Dict{String,Any}` for type stability
 mutable struct DMRGParams
     χˣ::Int
     χʸ::Int
+    χˣ_schedule::Vector{Pair{Int,Int}}
+    χʸ_schedule::Vector{Pair{Int,Int}}
     max_iter::Int
     convergence_tol::Float64
     method::Symbol
@@ -32,11 +37,14 @@ end
 
 
 """Keyword constructor with default values."""
-function DMRGParams(; χˣ::Int, χʸ::Int, max_iter::Int=100, convergence_tol::Float64=1e-8,
+function DMRGParams(; χˣ::Int, χʸ::Int,
+    χˣ_schedule::Vector{Pair{Int,Int}}=Pair{Int,Int}[],
+    χʸ_schedule::Vector{Pair{Int,Int}}=Pair{Int,Int}[],
+    max_iter::Int=100, convergence_tol::Float64=1e-8,
     method::Symbol=:single_site, subspace_expansion::Symbol=:none,
     α::Float64=1e-3, α_decay::Float64=1.0, δ::Float64=0.1, max_3s_sweeps::Int=0,
     verbose::Bool=false)
-    return DMRGParams(χˣ, χʸ, max_iter, convergence_tol, method, subspace_expansion, α, α_decay, δ, max_3s_sweeps, verbose)
+    return DMRGParams(χˣ, χʸ, χˣ_schedule, χʸ_schedule, max_iter, convergence_tol, method, subspace_expansion, α, α_decay, δ, max_3s_sweeps, verbose)
 end
 
 
@@ -54,6 +62,8 @@ function DMRGParams(d::Dict{String,Any})
     return DMRGParams(
         get(d, "χˣ", 10),
         get(d, "χʸ", 10),
+        get(d, "χˣ_schedule", Pair{Int,Int}[]),
+        get(d, "χʸ_schedule", Pair{Int,Int}[]),
         get(d, "max_iter", 100),
         get(d, "convergence_tol", 1e-8),
         method,
@@ -73,6 +83,27 @@ function Base.show(io::IO, p::DMRGParams)
         println(io, "*  ", fname, ": ", getfield(p, fname))
     end
 end
+
+
+"""
+    resolve_χ(schedule, default, sweep) -> Int
+
+Return the bond dimension for the given `sweep` number. If `schedule` is empty,
+return `default`. Otherwise, find the first entry `(max_sweep => χ)` where
+`sweep <= max_sweep`.
+"""
+function resolve_χ(schedule::Vector{Pair{Int,Int}}, default::Int, sweep::Int)
+    isempty(schedule) && return default
+    for (max_sweep, χ) in schedule
+        sweep <= max_sweep && return χ
+    end
+    return last(schedule).second
+end
+
+
+"""Return true if the schedule is empty or sweep has passed the last scheduled sweep."""
+_schedule_complete(schedule::Vector{Pair{Int,Int}}, sweep::Int) =
+    isempty(schedule) || sweep >= last(schedule).first
 
 
 """
@@ -137,6 +168,12 @@ function run_dmrg!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ₀::ForkTensorNe
         dmrg.current_sweep = i
         empty!(dmrg.cbe_stats)
 
+        # Resolve χ for this sweep (schedule or constant)
+        dmrg.params.χˣ = resolve_χ(dmrg.params.χˣ_schedule, dmrg.params.χˣ, i)
+        dmrg.params.χʸ = resolve_χ(dmrg.params.χʸ_schedule, dmrg.params.χʸ, i)
+        ψ.χˣ = dmrg.params.χˣ
+        ψ.χʸ = dmrg.params.χʸ
+
         if dmrg.params.method == :single_site
 
             single_site_sweep!(dmrg, H, ψ)
@@ -163,7 +200,7 @@ function run_dmrg!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ₀::ForkTensorNe
         E₀ = dmrg.E
 
         if dmrg.params.verbose
-            println("Iteration: ", i, ", Energy: ", dmrg.E, ", δE: ", δE)
+            println("Iteration: ", i, ", Energy: ", dmrg.E, ", δE: ", δE, ", χˣ: ", dmrg.params.χˣ, ", χʸ: ", dmrg.params.χʸ)
             if se in (:cbe, :cbe_3s) && !isempty(dmrg.cbe_stats)
                 total = sum(values(dmrg.cbe_stats))
                 n_success = get(dmrg.cbe_stats, :success, 0)
@@ -184,7 +221,9 @@ function run_dmrg!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ₀::ForkTensorNe
             end
         end
 
-        δE < dmrg.params.convergence_tol && break
+        schedule_done = _schedule_complete(dmrg.params.χˣ_schedule, i) &&
+                        _schedule_complete(dmrg.params.χʸ_schedule, i)
+        schedule_done && δE < dmrg.params.convergence_tol && break
     end
 
     return dmrg.E, ψ

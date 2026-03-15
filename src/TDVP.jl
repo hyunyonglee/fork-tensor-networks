@@ -24,6 +24,7 @@ struct TDVPParams
     subspace_expansion::Symbol
     δ::Float64
     verb_level::Int
+    energy_shift::Float64
 end
 
 
@@ -34,8 +35,9 @@ Constructor for TDVPParams with keyword arguments.
 """
 function TDVPParams(; χˣ::Int, χʸ::Int, method::Symbol=:single_site,
     δt::Union{Float64,ComplexF64}=0.1, Ncut::Int=10,
-    subspace_expansion::Symbol=:none, δ::Float64=0.1, verb_level::Int=0)
-    return TDVPParams(χˣ, χʸ, method, ComplexF64(δt), Ncut, subspace_expansion, δ, verb_level)
+    subspace_expansion::Symbol=:none, δ::Float64=0.1, verb_level::Int=0,
+    energy_shift::Float64=0.0)
+    return TDVPParams(χˣ, χʸ, method, ComplexF64(δt), Ncut, subspace_expansion, δ, verb_level, energy_shift)
 end
 
 
@@ -61,6 +63,7 @@ function TDVPParams(d::Dict{String,Any})
         se,
         get(d, "δ", 0.1),
         get(d, "verb_level", 0),
+        get(d, "energy_shift", 0.0),
     )
 end
 
@@ -145,7 +148,11 @@ function run_tdvp!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::ForkTensorNetwo
     for i = 1:max_step
 
         if tdvp.params.verb_level > 0
-            @printf("*  running at time %.2f...\n", real(tdvp.time))
+            if isa(tdvp.time, Real) || abs(imag(tdvp.time)) < 1e-15
+                @printf("*  running at time %.2f...\n", real(tdvp.time))
+            else
+                @printf("*  running at time %.2f%+.2fi...\n", real(tdvp.time), imag(tdvp.time))
+            end
         end
 
         if tdvp.params.method == :single_site
@@ -249,7 +256,7 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, H::ForkTensorNetworkOper
             Hₑ = (-1im * δt, tdvp.envs.el[x, y], H.Ws[x, y], tdvp.envs.er[x, y])
         end
 
-        ψ.Ts[x, y] .= local_time_evolution(Hₑ, ψ.Ts[x, y], Ncut, verb_level)
+        ψ.Ts[x, y] .= local_time_evolution(Hₑ, ψ.Ts[x, y], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
         if y == ψ.Ly && direction == :right
             break
@@ -259,7 +266,7 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, H::ForkTensorNetworkOper
         update_environment!(tdvp.envs, H, ψ, x, y, direction)
 
         Kₑ = (+1im * δt, tdvp.envs.el[x, y+dyₗ], tdvp.envs.er[x, y+dyᵣ])
-        C = local_time_evolution(Kₑ, S * U, Ncut, verb_level)
+        C = local_time_evolution(Kₑ, S * U, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
         ψ.Ts[x, y+dy] *= C
         ψ.aux_y_idx[x, y+a] = commonind(S, ψ.Ts[x, y])
@@ -308,14 +315,14 @@ function single_site_time_evolution_on_backbone!(tdvp::TDVP, H::ForkTensorNetwor
     end
 
     Hₑ = (-1im * δt, tdvp.envs.eu[x], H.Ws[x, 1], tdvp.envs.er[x, 1], tdvp.envs.ed[x])
-    ψ.Ts[x, 1] .= local_time_evolution(Hₑ, ψ.Ts[x, 1], Ncut, verb_level)
+    ψ.Ts[x, 1] .= local_time_evolution(Hₑ, ψ.Ts[x, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=1e-16, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x+a]))
 
     update_environment!(tdvp.envs, H, ψ, x, 1, direction)
 
     Kₑ = (+1im * δt, tdvp.envs.eu[x+dxᵤ], tdvp.envs.ed[x+dxₑ])
-    C = local_time_evolution(Kₑ, S * U, Ncut, verb_level)
+    C = local_time_evolution(Kₑ, S * U, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     ψ.Ts[x+dx, 1] *= C
     ψ.aux_x_idx[x+a] = commonind(S, ψ.Ts[x, 1])
@@ -395,7 +402,7 @@ function two_site_step_arm_right!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::
     else
         Hₑ = (-1im * δt, tdvp.envs.el[x, y], H.Ws[x, y], H.Ws[x, y+1], tdvp.envs.er[x, y+1])
     end
-    T = local_time_evolution(Hₑ, ψ.Ts[x, y] * ψ.Ts[x, y+1], Ncut, verb_level)
+    T = local_time_evolution(Hₑ, ψ.Ts[x, y] * ψ.Ts[x, y+1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     # SVD: split the two-site tensor
     if y == 1
@@ -410,7 +417,7 @@ function two_site_step_arm_right!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::
         ψ.Ts[x, y+1] = S * V
     else
         Kₑ = (+1im * δt, tdvp.envs.el[x, y+1], H.Ws[x, y+1], tdvp.envs.er[x, y+1])
-        ψ.Ts[x, y+1] = local_time_evolution(Kₑ, S * V, Ncut, verb_level)
+        ψ.Ts[x, y+1] = local_time_evolution(Kₑ, S * V, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
     end
 
     ψ.aux_y_idx[x, y] = commonind(ψ.Ts[x, y], S)
@@ -446,7 +453,7 @@ function two_site_step_arm_left!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::F
     else
         Hₑ = (-1im * δt, tdvp.envs.el[x, y-1], H.Ws[x, y-1], H.Ws[x, y], tdvp.envs.er[x, y])
     end
-    T = local_time_evolution(Hₑ, ψ.Ts[x, y-1] * ψ.Ts[x, y], Ncut, verb_level)
+    T = local_time_evolution(Hₑ, ψ.Ts[x, y-1] * ψ.Ts[x, y], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     # SVD: split the two-site tensor
     if y == 2
@@ -462,7 +469,7 @@ function two_site_step_arm_left!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::F
     else
         Kₑ = (+1im * δt, tdvp.envs.el[x, y-1], H.Ws[x, y-1], tdvp.envs.er[x, y-1])
     end
-    ψ.Ts[x, y-1] = local_time_evolution(Kₑ, U * S, Ncut, verb_level)
+    ψ.Ts[x, y-1] = local_time_evolution(Kₑ, U * S, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     ψ.aux_y_idx[x, y-1] = commonind(S, ψ.Ts[x, y])
     network_update!(ψ, :left)
@@ -524,7 +531,7 @@ function two_site_time_evolution_backbone_down!(tdvp::TDVP, H::ForkTensorNetwork
     end
 
     Hₑ = (-1im * δt, tdvp.envs.eu[x], tdvp.envs.er[x, 1], H.Ws[x, 1], H.Ws[x+1, 1], tdvp.envs.er[x+1, 1], tdvp.envs.ed[x+1])
-    T = local_time_evolution(Hₑ, ψ.Ts[x, 1] * ψ.Ts[x+1, 1], Ncut, verb_level)
+    T = local_time_evolution(Hₑ, ψ.Ts[x, 1] * ψ.Ts[x+1, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     if x == 1
         ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-16, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
@@ -534,7 +541,7 @@ function two_site_time_evolution_backbone_down!(tdvp::TDVP, H::ForkTensorNetwork
     update_environment!(tdvp.envs, H, ψ, x, 1, :down)
 
     Kₑ = (+1im * δt, tdvp.envs.eu[x+1], tdvp.envs.er[x+1, 1], H.Ws[x+1, 1], tdvp.envs.ed[x+1])
-    ψ.Ts[x+1, 1] = local_time_evolution(Kₑ, S * V, Ncut, verb_level)
+    ψ.Ts[x+1, 1] = local_time_evolution(Kₑ, S * V, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     ψ.aux_x_idx[x] = commonind(ψ.Ts[x, 1], S)
     network_update!(ψ, :down)
@@ -562,7 +569,7 @@ function two_site_time_evolution_backbone_up!(tdvp::TDVP, H::ForkTensorNetworkOp
     end
 
     Hₑ = (-1im * δt, tdvp.envs.eu[x-1], tdvp.envs.er[x-1, 1], H.Ws[x-1, 1], H.Ws[x, 1], tdvp.envs.er[x, 1], tdvp.envs.ed[x])
-    T = local_time_evolution(Hₑ, ψ.Ts[x-1, 1] * ψ.Ts[x, 1], Ncut, verb_level)
+    T = local_time_evolution(Hₑ, ψ.Ts[x-1, 1] * ψ.Ts[x, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     if x == ψ.Lx
         U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=1e-16, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
@@ -573,7 +580,7 @@ function two_site_time_evolution_backbone_up!(tdvp::TDVP, H::ForkTensorNetworkOp
     update_environment!(tdvp.envs, H, ψ, x, 1, :up)
 
     Kₑ = (+1im * δt, tdvp.envs.eu[x-1], tdvp.envs.er[x-1, 1], H.Ws[x-1, 1], tdvp.envs.ed[x-1])
-    ψ.Ts[x-1, 1] = local_time_evolution(Kₑ, S * U, Ncut, verb_level)
+    ψ.Ts[x-1, 1] = local_time_evolution(Kₑ, S * U, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     ψ.aux_x_idx[x-1] = commonind(S, ψ.Ts[x, 1])
     network_update!(ψ, :up)
@@ -653,13 +660,13 @@ function hybrid_time_evolution_arm_left!(tdvp::TDVP, H::ForkTensorNetworkOperato
     controlled_bond_expansion!(tdvp.envs, ψ, H, :left, tdvp.params.δ)
 
     Hₑ = (-1im * δt, tdvp.envs.el[x, 2], H.Ws[x, 2], tdvp.envs.er[x, 2])
-    ψ.Ts[x, 2] .= local_time_evolution(Hₑ, ψ.Ts[x, 2], Ncut, verb_level)
+    ψ.Ts[x, 2] .= local_time_evolution(Hₑ, ψ.Ts[x, 2], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     U, S, ψ.Ts[x, 2] = svd(ψ.Ts[x, 2], ψ.aux_y_idx[x, 1]; cutoff=1e-16, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, 1]))
     update_environment!(tdvp.envs, H, ψ, x, 2, :left)
 
     Kₑ = (+1im * δt, tdvp.envs.el[x, 2], tdvp.envs.er[x, 1])
-    C = local_time_evolution(Kₑ, S * U, Ncut, verb_level)
+    C = local_time_evolution(Kₑ, S * U, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     ψ.Ts[x, 1] *= C
     ψ.aux_y_idx[x, 1] = commonind(S, ψ.Ts[x, 2])
@@ -691,13 +698,13 @@ function hybrid_time_evolution_arm_right!(tdvp::TDVP, H::ForkTensorNetworkOperat
     controlled_bond_expansion!(tdvp.envs, ψ, H, :right, tdvp.params.δ)
 
     Hₑ = (-1im * δt, tdvp.envs.eu[x], H.Ws[x, 1], tdvp.envs.ed[x], tdvp.envs.er[x, 1])
-    ψ.Ts[x, 1] .= local_time_evolution(Hₑ, ψ.Ts[x, 1], Ncut, verb_level)
+    ψ.Ts[x, 1] .= local_time_evolution(Hₑ, ψ.Ts[x, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_y_idx[x, 1]; cutoff=1e-16, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, 1]))
     update_environment!(tdvp.envs, H, ψ, x, 1, :right)
 
     Kₑ = (+1im * δt, tdvp.envs.el[x, 2], tdvp.envs.er[x, 1])
-    C = local_time_evolution(Kₑ, S * U, Ncut, verb_level)
+    C = local_time_evolution(Kₑ, S * U, Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     ψ.Ts[x, 2] *= C
     ψ.aux_y_idx[x, 1] = commonind(S, ψ.Ts[x, 1])
@@ -753,16 +760,14 @@ end
 
 
 """
-    local_time_evolution(Hₑ, T₀, Ncut, verb_level)
+    local_time_evolution(Hₑ, T₀, Ncut, verb_level; energy_shift=0.0)
 
 Compute local time evolution using Krylov exponential method.
 """
-function local_time_evolution(Hₑ::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, T₀::ITensor, Ncut::Integer, verb_level::Integer)
+function local_time_evolution(Hₑ::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, T₀::ITensor, Ncut::Integer, verb_level::Integer;
+                              energy_shift::Float64=0.0)
 
-    if verb_level > 2
-        return krylov_expm(Hₑ, T₀; max_iter=Ncut, tol=1.0e-6, verbose=true)
-    else
-        return krylov_expm(Hₑ, T₀; max_iter=Ncut, tol=1.0e-6, verbose=false)
-    end
+    gen_shift = -ComplexF64(Hₑ[1]) * energy_shift
+    return krylov_expm(Hₑ, T₀; max_iter=Ncut, tol=1.0e-6, shift=gen_shift, verbose=(verb_level > 2))
 
 end

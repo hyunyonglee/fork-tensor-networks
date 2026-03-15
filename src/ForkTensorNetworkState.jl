@@ -401,7 +401,7 @@ function norm_ftn(ψ::ForkTensorNetworkState)
             end
             Tx *= Ty
         end
-        return scalar(Tx)
+        return sqrt(abs(scalar(Tx)))
     else
         xc = ψ.canonical_center[1]
         yc = ψ.canonical_center[2]
@@ -442,7 +442,7 @@ function expectation_value_ftn(ψ::ForkTensorNetworkState, H::ForkTensorNetworkO
         end
         Tx *= Ty
     end
-    return scalar(Tx) / norm_ftn(ψ)
+    return scalar(Tx) / norm_ftn(ψ)^2
 end
 
 
@@ -481,5 +481,8 @@ function applying_local_operators!(ψ::ForkTensorNetworkState, ops::Vector{Tuple
     for i = 1:length(ops)
         x, y, op_name = ops[i]
         ψ.Ts[x, y] .= noprime(op(ψ.phys_idx[x, y], op_name) * ψ.Ts[x, y])
+        if ψ.canonical_center !== nothing && (x, y) != ψ.canonical_center
+            ψ.canonical_center = nothing
+        end
     end
 end

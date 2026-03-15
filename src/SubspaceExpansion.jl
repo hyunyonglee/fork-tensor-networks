@@ -133,7 +133,20 @@ function shrewd_selection(Env1::Tuple{Vararg{ITensor}}, Env2::Tuple{Vararg{ITens
     u, s, ~ = svd(Lorth, uniqueinds(Lorth, S); cutoff=1e-16, maxdim=Dp)
 
     Q = u * s
-    ~, ~, Apr = svd(Q, (idx_W, commoninds(Q, s)); cutoff=1e-16)
+
+    # Guard: SVD requires valid QN blocks on both sides.
+    # With QN-conserving tensors, the combined left index (idx_W ⊗ svd_index)
+    # can have empty QN sectors when bath-site symmetry causes exact cancellation.
+    ci = commoninds(Q, s)
+    if length(ci) == 0 || any(i -> dim(i) == 0, ci)
+        return :skip_Apr
+    end
+    ri = uniqueinds(Q, idx_W, ci...)
+    if length(ri) == 0 || any(i -> dim(i) == 0, ri)
+        return :skip_Apr
+    end
+
+    ~, ~, Apr = svd(Q, (idx_W, ci...); cutoff=1e-16)
 
     if abs(norm(dag(T2) * Apr)) > tol
         return :skip_Apr

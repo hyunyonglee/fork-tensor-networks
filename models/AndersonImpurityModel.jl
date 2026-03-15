@@ -3,7 +3,8 @@ using ITensors, ITensorMPS, Random
 
 export ftns_initial_state, ftno_aim_model
 
-function ftns_initial_state(phys_idx::Matrix{Index}, ρ::Float64; conserve_qns=true)
+function ftns_initial_state(phys_idx::AbstractMatrix{<:Index}, ρ::Float64;
+    conserve_qns=true, geometry::String="star")
 
     Lx = size(phys_idx, 1)
     Ly = size(phys_idx, 2)
@@ -12,9 +13,10 @@ function ftns_initial_state(phys_idx::Matrix{Index}, ρ::Float64; conserve_qns=t
     aux_x_idx = Vector{Index}(undef, Lx - 1)
     aux_y_idx = Matrix{Index}(undef, Lx, Ly - 1)
 
-    # state = random_product_state(Ly, round(ρ * Ly))
-    state = alternating_product_state(Ly, round(Int, ρ * Ly))
-    # state = [i <= round(Int, ρ * Ly) ? "Occ" : "Emp" for i in 1:Ly]
+    n_occ = clamp(round(Int, ρ * Ly), 0, Ly)
+    state = geometry == "double chain" ?
+        double_chain_product_state(Ly, n_occ) :
+        sequential_product_state(Ly, n_occ)
 
 
 
@@ -611,6 +613,38 @@ function alternating_product_state(L, n)
     end
 
     return vector
+end
+
+
+function sequential_product_state(L::Int, n::Int)
+    0 <= n <= L || throw(ArgumentError("occupation count n must satisfy 0 <= n <= L"))
+    state = fill("Emp", L)
+    for i in 1:n
+        state[i] = "Occ"
+    end
+    return state
+end
+
+
+function double_chain_product_state(L::Int, n::Int)
+    0 <= n <= L || throw(ArgumentError("occupation count n must satisfy 0 <= n <= L"))
+
+    state = fill("Emp", L)
+    n == 0 && return state
+
+    # Double-chain column layout:
+    # [impurity, occ₁, emp₁, occ₂, emp₂, ...]
+    # Favor the impurity and occupied chain first; only populate the empty
+    # chain if the requested filling exceeds those low-energy-like sites.
+    fill_order = Int[1]
+    append!(fill_order, 2:2:L)
+    append!(fill_order, 3:2:L)
+
+    for idx in fill_order[1:n]
+        state[idx] = "Occ"
+    end
+
+    return state
 end
 
 

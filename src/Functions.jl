@@ -30,7 +30,7 @@ Builds a tridiagonal representation in the Krylov basis and exponentiates it.
 - `tol`: Convergence tolerance for the matrix exponential.
 - `verbose`: Print convergence information.
 """
-function krylov_expm(H::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, x0::ITensor; max_iter=10, tol=1.0E-8, verbose=false)
+function krylov_expm(H::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, x0::ITensor; max_iter=10, tol=1.0E-8, shift::ComplexF64=0.0+0.0im, verbose=false)
 
     Vs = Vector{ITensor}(undef, max_iter + 1)
     T = Matrix{Complex}(undef, max_iter, max_iter)
@@ -56,6 +56,7 @@ function krylov_expm(H::Tuple{Vararg{Union{ITensor,Complex,AbstractFloat}}}, x0:
             T[i, j] = scalar(dag(Vs[i]) * w)
             w .-= T[i, j] * Vs[i]
         end
+        T[j, j] += shift
 
         if j < max_iter
             T[j+1, j] = norm(w)
