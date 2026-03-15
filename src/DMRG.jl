@@ -397,11 +397,11 @@ function two_site_step_arm_right!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ::
 
     if y == 1
         T, dmrg.E = lanczos((dmrg.envs.eu[x], dmrg.envs.ed[x], H.Ws[x, y], H.Ws[x, y+1], dmrg.envs.er[x, y+1]), ψ.Ts[x, y] * ψ.Ts[x, y+1];)
-        V, S, U = svd(T, (ψ.aux_y_idx[x, y+1], ψ.phys_idx[x, y+1]); cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y]))
+        V, S, U = svd(T, (ψ.aux_y_idx[x, y+1], ψ.phys_idx[x, y+1]); cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y]))
         dmrg.envs.el[x, y+1] = U * dmrg.envs.eu[x] * dmrg.envs.ed[x] * H.Ws[x, y] * prime(dag(U))
     else
         T, dmrg.E = lanczos((dmrg.envs.el[x, y], H.Ws[x, y], H.Ws[x, y+1], dmrg.envs.er[x, y+1]), ψ.Ts[x, y] * ψ.Ts[x, y+1];)
-        U, S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=1e-12, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y]))
+        U, S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=1e-10, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y]))
         dmrg.envs.el[x, y+1] = U * dmrg.envs.el[x, y] * H.Ws[x, y] * prime(dag(U))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
@@ -429,10 +429,10 @@ function two_site_step_arm_left!(dmrg::DMRG, H::ForkTensorNetworkOperator, ψ::F
 
     if y == 2
         T, dmrg.E = lanczos((dmrg.envs.eu[x], dmrg.envs.ed[x], H.Ws[x, y-1], H.Ws[x, y], dmrg.envs.er[x, y]), ψ.Ts[x, y-1] * ψ.Ts[x, y];)
-        V, S, U = svd(T, (ψ.aux_y_idx[x, y], ψ.phys_idx[x, y]); cutoff=1e-12, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y-1]))
+        V, S, U = svd(T, (ψ.aux_y_idx[x, y], ψ.phys_idx[x, y]); cutoff=1e-10, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y-1]))
     else
         T, dmrg.E = lanczos((dmrg.envs.el[x, y-1], H.Ws[x, y-1], H.Ws[x, y], dmrg.envs.er[x, y]), ψ.Ts[x, y-1] * ψ.Ts[x, y];)
-        U, S, V = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y-1]))
+        U, S, V = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y-1]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     dmrg.envs.er[x, y-1] = V * dmrg.envs.er[x, y] * H.Ws[x, y] * prime(dag(V))
@@ -496,9 +496,9 @@ function two_site_update_backbone_down!(dmrg::DMRG, H::ForkTensorNetworkOperator
     T, dmrg.E = lanczos((dmrg.envs.eu[x], dmrg.envs.er[x, 1], H.Ws[x, 1], H.Ws[x+1, 1], dmrg.envs.er[x+1, 1], dmrg.envs.ed[x+1]), ψ.Ts[x, 1] * ψ.Ts[x+1, 1];)
 
     if x == 1
-        U, S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
+        U, S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     else
-        U, S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
+        U, S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     dmrg.envs.eu[x+1] = U * dmrg.envs.eu[x] * dmrg.envs.er[x, 1] * H.Ws[x, 1] * prime(dag(U))
@@ -528,9 +528,9 @@ function two_site_update_backbone_up!(dmrg::DMRG, H::ForkTensorNetworkOperator, 
     T, dmrg.E = lanczos((dmrg.envs.eu[x-1], dmrg.envs.er[x-1, 1], H.Ws[x-1, 1], H.Ws[x, 1], dmrg.envs.er[x, 1], dmrg.envs.ed[x]), ψ.Ts[x-1, 1] * ψ.Ts[x, 1];)
 
     if x == ψ.Lx
-        U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=1e-12, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
+        U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=1e-10, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
     else
-        V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
+        V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     dmrg.envs.ed[x-1] = V * dmrg.envs.ed[x] * dmrg.envs.er[x, 1] * H.Ws[x, 1] * prime(dag(V))
