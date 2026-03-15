@@ -12,3 +12,4 @@ docs/
 .vscode
 *workspace*
 .ipynb
+Manifest.toml
