@@ -5,7 +5,8 @@ etc/
 src/backup_before_refactor/
 dmft/
 .claude/
-docs/
+docs/*
+!docs/plans/
 
 # Garbage
 .DS_Store
