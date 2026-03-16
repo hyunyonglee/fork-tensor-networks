@@ -119,10 +119,8 @@ function save_ftno(filename::AbstractString, H::ForkTensorNetworkOperator; group
         end
 
         g_aux_y = create_group(g, "aux_y_idx")
-        for x in 1:H.Lx, y in 1:H.Ly
-            if isassigned(H.aux_y_idx, x, y)
-                write(g_aux_y, "$(x)_$(y)", H.aux_y_idx[x, y])
-            end
+        for x in 1:H.Lx, y in 1:(H.Ly - 1)
+            write(g_aux_y, "$(x)_$(y)", H.aux_y_idx[x, y])
         end
 
         g_ws = create_group(g, "tensors")
@@ -160,9 +158,9 @@ function load_ftno(filename::AbstractString; group::String="ftno")
             aux_x_idx[x] = read(g_aux_x, "$x", Index)
         end
 
-        aux_y_idx = Matrix{Index}(undef, Lx, Ly)
+        aux_y_idx = Matrix{Index}(undef, Lx, Ly - 1)
         g_aux_y = g["aux_y_idx"]
-        for x in 1:Lx, y in 1:Ly
+        for x in 1:Lx, y in 1:(Ly - 1)
             key = "$(x)_$(y)"
             if haskey(g_aux_y, key)
                 aux_y_idx[x, y] = read(g_aux_y, key, Index)

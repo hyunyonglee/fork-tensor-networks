@@ -36,12 +36,12 @@ mutable struct ForkTensorNetworkState
 
 
     """
-        ForkTensorNetworkState(Lx, Ly, phys_idx::Vector{Index}; χˣ=nothing, χʸ=nothing)
+        ForkTensorNetworkState(Lx, Ly, phys_idx::Vector{Index}; χˣ, χʸ)
 
     Construct an FTN state from a flat vector of physical indices (mapped row-major to the 2D grid).
-    Auxiliary indices and random tensors are initialized automatically.
+    Auxiliary indices and random tensors are initialized automatically. χˣ and χʸ are required.
     """
-    function ForkTensorNetworkState(Lx::T, Ly::T, phys_idx::Vector{Index{T}}; χˣ=nothing, χʸ=nothing) where {T<:Integer}
+    function ForkTensorNetworkState(Lx::T, Ly::T, phys_idx::Vector{Index{T}}; χˣ::Integer, χʸ::Integer) where {T<:Integer}
         ψ = new(
             Lx, Ly, χˣ, χʸ, nothing,
             Matrix{Integer}(undef, Lx * Ly, Lx * Ly),
@@ -61,12 +61,12 @@ mutable struct ForkTensorNetworkState
 
 
     """
-        ForkTensorNetworkState(Lx, Ly, phys_idx::Matrix{Index}; χˣ=nothing, χʸ=nothing)
+        ForkTensorNetworkState(Lx, Ly, phys_idx::AbstractMatrix{<:Index}; χˣ, χʸ)
 
     Construct an FTN state from a 2D matrix of physical indices.
-    Auxiliary indices and random tensors are initialized automatically.
+    Auxiliary indices and random tensors are initialized automatically. χˣ and χʸ are required.
     """
-    function ForkTensorNetworkState(Lx::T, Ly::T, phys_idx::Matrix{Index{T}}; χˣ=nothing, χʸ=nothing) where {T<:Integer}
+    function ForkTensorNetworkState(Lx::Integer, Ly::Integer, phys_idx::AbstractMatrix{<:Index}; χˣ::Integer, χʸ::Integer)
         ψ = new(
             Lx, Ly, χˣ, χʸ, nothing,
             Matrix{Integer}(undef, Lx * Ly, Lx * Ly),
@@ -91,7 +91,7 @@ mutable struct ForkTensorNetworkState
     Construct an FTN state from pre-existing tensors and indices.
     Only the graph matrix is initialized; tensors and indices are used as provided.
     """
-    function ForkTensorNetworkState(Ts::Matrix{ITensor}, phys_idx::Matrix{Index}, aux_x_idx::Vector{Index}, aux_y_idx::Matrix{Index}; χˣ=nothing, χʸ=nothing)
+    function ForkTensorNetworkState(Ts::AbstractMatrix{ITensor}, phys_idx::AbstractMatrix{<:Index}, aux_x_idx::AbstractVector{<:Index}, aux_y_idx::AbstractMatrix{<:Index}; χˣ=nothing, χʸ=nothing)
         Lx = size(Ts, 1)
         Ly = size(Ts, 2)
         ψ = new(
@@ -140,7 +140,7 @@ end
 Initialize auxiliary bond indices for the FTN state. If `phys_idx` is a `Vector{Index}`,
 the physical indices are also populated from the flat vector (row-major order).
 """
-function initialize_indices!(ψ::ForkTensorNetworkState, phys_idx::Union{Nothing,Vector{Index{T}}}=nothing) where {T<:Integer}
+function initialize_indices!(ψ::ForkTensorNetworkState, phys_idx::Union{Nothing,AbstractVector{<:Index}}=nothing)
     if phys_idx !== nothing
         for x = 1:ψ.Lx
             for y = 1:ψ.Ly
@@ -149,14 +149,17 @@ function initialize_indices!(ψ::ForkTensorNetworkState, phys_idx::Union{Nothing
         end
     end
 
+    χʸ_val = ψ.χʸ === nothing ? 2 : ψ.χʸ
+    χˣ_val = ψ.χˣ === nothing ? 2 : ψ.χˣ
+
     for x = 1:ψ.Lx
         for y = 1:(ψ.Ly-1)
-            ψ.aux_y_idx[x, y] = Index(ψ.χʸ; tags="Arm,x=$(x),y=($(y)-$(y+1))")
+            ψ.aux_y_idx[x, y] = Index(χʸ_val; tags="Arm,x=$(x),y=($(y)-$(y+1))")
         end
     end
 
     for x = 1:(ψ.Lx-1)
-        ψ.aux_x_idx[x] = Index(ψ.χˣ; tags="Backbone,x=($(x)-$(x+1)),y=1")
+        ψ.aux_x_idx[x] = Index(χˣ_val; tags="Backbone,x=($(x)-$(x+1)),y=1")
     end
 end
 

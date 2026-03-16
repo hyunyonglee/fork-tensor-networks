@@ -27,7 +27,7 @@ struct ForkTensorNetworkOperator
 
     Construct an FTN operator from pre-built MPO tensors and index arrays.
     """
-    function ForkTensorNetworkOperator(Ws::Matrix{ITensor}, phys_idx::Matrix{Index}, aux_x_idx::Vector{Index}, aux_y_idx::Matrix{Index})
+    function ForkTensorNetworkOperator(Ws::AbstractMatrix{ITensor}, phys_idx::AbstractMatrix{<:Index}, aux_x_idx::AbstractVector{<:Index}, aux_y_idx::AbstractMatrix{<:Index})
         Lx = size(Ws, 1)
         Ly = size(Ws, 2)
         return new(Lx, Ly, phys_idx, aux_x_idx, aux_y_idx, Ws)
