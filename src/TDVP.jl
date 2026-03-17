@@ -269,7 +269,7 @@ function single_site_time_evolution_on_arm!(tdvp::TDVP, H::ForkTensorNetworkOper
             break
         end
 
-        U, S, ψ.Ts[x, y] = svd(ψ.Ts[x, y], ψ.aux_y_idx[x, y+a]; cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y+a]))
+        U, S, ψ.Ts[x, y] = svd(ψ.Ts[x, y], ψ.aux_y_idx[x, y+a]; cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y+a]))
         ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
         update_environment!(tdvp.envs, H, ψ, x, y, direction)
 
@@ -325,7 +325,7 @@ function single_site_time_evolution_on_backbone!(tdvp::TDVP, H::ForkTensorNetwor
     Hₑ = (-1im * δt, tdvp.envs.eu[x], H.Ws[x, 1], tdvp.envs.er[x, 1], tdvp.envs.ed[x])
     ψ.Ts[x, 1] .= local_time_evolution(Hₑ, ψ.Ts[x, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
-    U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=1e-10, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x+a]))
+    U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_x_idx[x+a]; cutoff=1e-12, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x+a]))
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
 
     update_environment!(tdvp.envs, H, ψ, x, 1, direction)
@@ -415,9 +415,9 @@ function two_site_step_arm_right!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::
 
     # SVD: split the two-site tensor
     if y == 1
-        V, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y+1], ψ.phys_idx[x, y+1]); cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y]))
+        V, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y+1], ψ.phys_idx[x, y+1]); cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y]))
     else
-        ψ.Ts[x, y], S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=1e-10, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y]))
+        ψ.Ts[x, y], S, V = svd(T, (ψ.aux_y_idx[x, y-1], ψ.phys_idx[x, y]); cutoff=1e-12, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     update_environment!(tdvp.envs, H, ψ, x, y, :right)
@@ -467,9 +467,9 @@ function two_site_step_arm_left!(tdvp::TDVP, H::ForkTensorNetworkOperator, ψ::F
 
     # SVD: split the two-site tensor
     if y == 2
-        ψ.Ts[x, y], S, U = svd(T, (ψ.aux_y_idx[x, y], ψ.phys_idx[x, y]); cutoff=1e-10, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y-1]))
+        ψ.Ts[x, y], S, U = svd(T, (ψ.aux_y_idx[x, y], ψ.phys_idx[x, y]); cutoff=1e-12, maxdim=χʸ, lefttags=tags(ψ.aux_y_idx[x, y-1]))
     else
-        U, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y-1]))
+        U, S, ψ.Ts[x, y] = svd(T, (ψ.aux_y_idx[x, y-2], ψ.phys_idx[x, y-1]); cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, y-1]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     update_environment!(tdvp.envs, H, ψ, x, y, :left)
@@ -545,9 +545,9 @@ function two_site_time_evolution_backbone_down!(tdvp::TDVP, H::ForkTensorNetwork
     T = local_time_evolution(Hₑ, ψ.Ts[x, 1] * ψ.Ts[x+1, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     if x == 1
-        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
+        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     else
-        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
+        ψ.Ts[x, 1], S, V = svd(T, (ψ.aux_x_idx[x-1], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     update_environment!(tdvp.envs, H, ψ, x, 1, :down)
@@ -584,9 +584,9 @@ function two_site_time_evolution_backbone_up!(tdvp::TDVP, H::ForkTensorNetworkOp
     T = local_time_evolution(Hₑ, ψ.Ts[x-1, 1] * ψ.Ts[x, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
     if x == ψ.Lx
-        U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=1e-10, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
+        U, S, V = svd(T, (ψ.aux_x_idx[x-2], ψ.aux_y_idx[x-1, 1], ψ.phys_idx[x-1, 1]); cutoff=1e-12, maxdim=χˣ, righttags=tags(ψ.aux_x_idx[x-1]))
     else
-        V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-10, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
+        V, S, U = svd(T, (ψ.aux_x_idx[x], ψ.aux_y_idx[x, 1], ψ.phys_idx[x, 1]); cutoff=1e-12, maxdim=χˣ, lefttags=tags(ψ.aux_x_idx[x-1]))
     end
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     ψ.Ts[x, 1] = V
@@ -675,7 +675,7 @@ function hybrid_time_evolution_arm_left!(tdvp::TDVP, H::ForkTensorNetworkOperato
     Hₑ = (-1im * δt, tdvp.envs.el[x, 2], H.Ws[x, 2], tdvp.envs.er[x, 2])
     ψ.Ts[x, 2] .= local_time_evolution(Hₑ, ψ.Ts[x, 2], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
-    U, S, ψ.Ts[x, 2] = svd(ψ.Ts[x, 2], ψ.aux_y_idx[x, 1]; cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, 1]))
+    U, S, ψ.Ts[x, 2] = svd(ψ.Ts[x, 2], ψ.aux_y_idx[x, 1]; cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, 1]))
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     update_environment!(tdvp.envs, H, ψ, x, 2, :left)
 
@@ -714,7 +714,7 @@ function hybrid_time_evolution_arm_right!(tdvp::TDVP, H::ForkTensorNetworkOperat
     Hₑ = (-1im * δt, tdvp.envs.eu[x], H.Ws[x, 1], tdvp.envs.ed[x], tdvp.envs.er[x, 1])
     ψ.Ts[x, 1] .= local_time_evolution(Hₑ, ψ.Ts[x, 1], Ncut, verb_level; energy_shift=tdvp.params.energy_shift)
 
-    U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_y_idx[x, 1]; cutoff=1e-10, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, 1]))
+    U, S, ψ.Ts[x, 1] = svd(ψ.Ts[x, 1], ψ.aux_y_idx[x, 1]; cutoff=1e-12, maxdim=χʸ, righttags=tags(ψ.aux_y_idx[x, 1]))
     ψ.max_S = max(ψ.max_S, von_neumann_entropy(S))
     update_environment!(tdvp.envs, H, ψ, x, 1, :right)
 
