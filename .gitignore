@@ -8,6 +8,7 @@ dmft/
 docs/
 !docs/plans/
 references/
+tests/
 
 # Garbage
 .DS_Store
