@@ -5,8 +5,7 @@ etc/
 src/backup_before_refactor/
 dmft/
 .claude/
-docs/*
-!docs/plans/
+docs/
 references/
 tests/
 
